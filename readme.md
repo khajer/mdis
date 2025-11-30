@@ -3,10 +3,15 @@ mdis is a json memory cache server. it is a TCP socket server and keep data on m
 
 # how to use 
 
+javascript 
+```sh
+npm install mdis-client;
+```
+
 ```javascript 
 // initial
-import Client from mdis;
-m = Client.connect(localhost="localhost", port=6411)
+import MdisClient from mdis-client;
+m = MdisClient.connect(localhost="localhost", port=6411)
 
 // set data
 const jsData = {
