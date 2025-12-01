@@ -6,8 +6,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let listener = TcpListener::bind("127.0.0.1:6411").await?;
 
     loop {
-        let (mut socket, _) = listener.accept().await?;
+        let (mut socket, addr) = listener.accept().await?;
 
+        println!("Accepted connection from {}", addr);
         tokio::spawn(async move {
             // buffer read
             let mut buf = [0; 1024];
