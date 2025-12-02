@@ -13,6 +13,13 @@ class MdisClient {
         console.log(`Connected to server at ${this.host}:${this.port}`);
         resolve(this);
       });
+      this.client.on("data", (data) => {
+        // console.log(data.toString());
+        this.client.end();
+      });
+      this.client.on("end", () => {
+        console.log("disconnected from server");
+      });
     });
   }
   close() {
@@ -21,9 +28,13 @@ class MdisClient {
   }
   set(key, value) {
     this.data[key] = value;
+    const data = `SET ${key}\n${value}\r\n`;
+    this.client.write(data);
   }
 
   get(key) {
+    const data = `GET ${key}\r\n`;
+    this.client.write(data);
     return this.data[key];
   }
 }

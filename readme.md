@@ -35,3 +35,13 @@ const data = m.Json.get("profile")
 m.close()
 
 ```
+
+
+# example
+## test client call
+```sh 
+// set 
+node example/nodejs/simple/example_1.js
+// get
+node example/nodejs/simple/example_2.js
+```
