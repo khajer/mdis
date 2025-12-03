@@ -5,7 +5,7 @@ async function main() {
     let m = MdisClient.connect((host = "127.0.0.1"), (port = 6411));
     const resp = await m.set("token", "123456");
     console.log(resp);
-    console.log("completed");
+    // console.log("completed");
   } catch (error) {
     console.log(error);
   }
