@@ -42,9 +42,7 @@ class MdisClient:
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.socket.connect((self.host, self.port))
             self.connected = True
-            # print(f"Connected to server at {self.host}:{self.port}")
 
-            # Start receiving data in a separate thread
             self._receive_thread = threading.Thread(target=self._receive_data)
             self._receive_thread.daemon = True
             self._receive_thread.start()
@@ -95,6 +93,26 @@ class MdisClient:
             handler(response)
             del self._response_handlers[self._request_id]
 
+    def parse_response(self, data: str) -> str:
+        """
+        Parse the response from the server.
+
+        Args:
+            data: The raw response data from the server
+
+        Returns:
+            The parsed response value or error message
+        """
+        response = data
+        resp = response.split("\n")
+
+        if len(resp) >= 2 and resp[0].lower() == "ok":
+            return resp[1].strip()
+        elif len(resp) >= 2 and resp[0].lower() == "err":
+            return "Error:" + resp[1].strip()
+
+        return "NO RESPONSE"
+
     def _send_command(self, command: str) -> Any:
         """Send a command to the server and wait for the response."""
         if not self.connected:
@@ -120,7 +138,7 @@ class MdisClient:
                 del self._response_handlers[self._request_id]
                 raise TimeoutError("Request timed out")
 
-            return response
+            return self.parse_response(response)
 
     def set(self, key: str, value: Any) -> Any:
         """Set a key-value pair."""
@@ -128,7 +146,13 @@ class MdisClient:
             self.data[key] = value
 
         command = f"SET {key}\n{value}\r\n"
-        return self._send_command(command)
+        response = self._send_command(command)
+
+        # Store the response locally for reference
+        with self._lock:
+            self.data[key] = response
+
+        return response
 
     def get(self, key: str) -> Any:
         """Get a value by key."""

@@ -6,7 +6,7 @@ def main():
     try:
         client = MdisClient.connect("127.0.0.1", 6411)
         my_token = client.get("token")
-        print(f"Token: {my_token}")
+        print(f"resonse: {my_token}")
 
     except Exception as error:
         print(f"Error: {error}")

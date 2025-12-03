@@ -8,6 +8,7 @@ A Python client library for connecting to the MDIS (Multi-Device Integration Ser
 - Thread-safe operations
 - Raw text-based protocol with delimiters
 - Simple API with set/get operations
+- Response parsing for server acknowledgments and errors
 
 ## Installation
 
@@ -77,12 +78,28 @@ The client communicates with the server using a simple text-based protocol:
 3. Responses are terminated with `\r\n`
 4. No length prefix or JSON encoding is used
 
+### Response Format
+
+The server responds with one of the following formats:
+
+1. Success response: `ok\nvalue\r\n`
+2. Error response: `err\nerror message\r\n`
+
+The client parses these responses and returns either the value (for successful operations) or an error message (for failed operations).
+
 ## Error Handling
 
-The client raises exceptions for:
-- Connection errors
-- Protocol errors
-- Timeout errors (10 seconds)
+The client handles errors in two ways:
+
+1. **Connection/Protocol Errors**: The client raises exceptions for:
+   - Connection errors
+   - Protocol errors
+   - Timeout errors (10 seconds)
+
+2. **Server Errors**: The server may return error messages that are parsed by the client:
+   - Server returns: `err\nerror message\r\n`
+   - Client returns: `"Error:error message"`
+   - If the response format is unrecognize
 
 ## Thread Safety
 
