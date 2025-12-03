@@ -1,0 +1,7 @@
+# This file contains the Python dependencies for the MDIS client example
+# No external dependencies are required for the basic client functionality
+# All functionality is implemented using Python's standard library
+
+# Optional dependencies for enhanced functionality:
+# requests>=2.25.1  # If you need HTTP-based communication
+# click>=8.0.0     # If you want to add CLI functionality
