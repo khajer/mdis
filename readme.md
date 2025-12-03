@@ -38,10 +38,10 @@ m.close()
 
 
 # example
-## test client call
+## test client call by client
 ```sh 
-// set 
+# set 
 node example/nodejs/simple/example_1.js
-// get
+#/ get
 node example/nodejs/simple/example_2.js
 ```
