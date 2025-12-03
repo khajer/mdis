@@ -11,10 +11,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let shared_memory = Arc::new(Mutex::new(ShareMemory::new()));
 
     loop {
-        let (mut socket, addr) = listener.accept().await?;
-
-        println!("Accepted connection from {}", addr);
         let shared_memory_clone = Arc::clone(&shared_memory);
+
+        let (mut socket, addr) = listener.accept().await?;
+        println!("Accepted connection from {}", addr);
+
         tokio::spawn(async move {
             // buffer read
             let mut buf = [0; 4096];
@@ -29,16 +30,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         return;
                     }
                 };
+
+                let resp;
                 let incoming_message = String::from_utf8_lossy(&buf[..n]);
-                println!("incomming : {}", incoming_message);
-                //
+
                 if let Ok(mut sm) = shared_memory_clone.lock() {
-                    let resp = sm.receive_message(incoming_message.to_string());
-                    println!("response : {}", resp);
+                    resp = sm.receive_message(incoming_message.to_string());
+                } else {
+                    resp = "".to_string();
                 }
 
                 // write to socket
-                if let Err(e) = socket.write_all(&buf[0..n]).await {
+                if let Err(e) = socket.write_all(resp.as_bytes()).await {
                     eprintln!("failed to write to socket; err = {:?}", e);
                     return;
                 }
