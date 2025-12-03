@@ -11,29 +11,20 @@ npm install mdis-client;
 ```javascript 
 // initial
 import MdisClient from mdis-client;
-let m = MdisClient.connect(localhost='localhost', port=6411)
+async function main() {
+  try {
+    let m = MdisClient.connect((host = "127.0.0.1"), (port = 6411));
+    //set
+    await m.set("token", "123456");
 
-// string data 
-m.set('token', '123456');
-
-// get data
-const myToken = m.get('token');
-
-// json data
-
-// set data
-const jsData = {
-  'username':'khajer',
-  'email': 'khajer@gmail.com'
+    //get
+    const myToken = await m.get("token");
+    console.log(myToken);
+    
+  } catch (error) {
+    console.log(error);
+  }
 }
-m.Json.set("profile", jsData);
-
-// get data
-const data = m.Json.get("profile")
-
-// close connection
-m.close()
-
 ```
 
 
