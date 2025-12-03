@@ -9,13 +9,7 @@ impl ShareMemory {
             data: HashMap::new(),
         }
     }
-    pub fn show_all_data(&self) {
-        println!("show data");
-        for (key, value) in &self.data {
-            println!("{}: {}", key, value);
-        }
-        println!("-----")
-    }
+
     pub fn receive_message(&mut self, message: String) -> String {
         println!("message received : {}", message);
         let parts: Vec<&str> = message.split('\n').collect();
@@ -31,8 +25,6 @@ impl ShareMemory {
                 let value = parts[1].to_string();
                 self.data.insert(key_data, value);
 
-                self.show_all_data();
-
                 return "Ok\ninsert completed\r\n".to_string();
             } else if method_name == "get" {
                 let key_data = header_message[1].to_string();
@@ -41,11 +33,10 @@ impl ShareMemory {
                     .get(&key_data)
                     .cloned()
                     .unwrap_or_else(|| "".to_string());
-                self.show_all_data();
+
                 println!("result = {}", result);
                 return "Ok\n".to_string() + &result + "\r\n";
             } else {
-                self.show_all_data();
                 return "Err\r\n".to_string();
             }
         }

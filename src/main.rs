@@ -30,10 +30,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         return;
                     }
                 };
-                let incoming_message = String::from_utf8_lossy(&buf[..n]);
-                println!("incomming : {}", incoming_message);
-                //
+
                 let resp;
+                let incoming_message = String::from_utf8_lossy(&buf[..n]);
+
                 if let Ok(mut sm) = shared_memory_clone.lock() {
                     resp = sm.receive_message(incoming_message.to_string());
                 } else {
@@ -41,7 +41,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
 
                 // write to socket
-                // println!("response: {}", resp);
                 if let Err(e) = socket.write_all(resp.as_bytes()).await {
                     eprintln!("failed to write to socket; err = {:?}", e);
                     return;
