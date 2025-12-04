@@ -40,3 +40,61 @@ impl ShareMemory {
         "Err\r\n".to_string()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_receive_message_ok_blank() {
+        let mut share_memory = ShareMemory::new();
+        let message = "set key1\nvalue1".to_string();
+        let response = share_memory.receive_message(message);
+        assert_eq!(response, "OK\ninsert completed\r\n");
+
+        let message = "get key1".to_string();
+        let response = share_memory.receive_message(message);
+        assert_eq!(response, "OK\nvalue1\r\n");
+
+        let message = "get key2".to_string();
+        let response = share_memory.receive_message(message);
+        assert_eq!(response, "OK\n\r\n");
+    }
+
+    #[test]
+    fn test_receive_message_ok_value() {
+        let mut share_memory = ShareMemory::new();
+        let message = "set key2\nvalue2".to_string();
+        let response = share_memory.receive_message(message);
+        assert_eq!(response, "OK\ninsert completed\r\n");
+
+        let message = "get key2".to_string();
+        let response = share_memory.receive_message(message);
+        assert_eq!(response, "OK\nvalue2\r\n");
+    }
+
+    #[test]
+    fn test_receive_message_error_empty_text() {
+        let mut share_memory = ShareMemory::new();
+        let message = "".to_string();
+        let response = share_memory.receive_message(message);
+        assert_eq!(response, "Err\r\n");
+
+        let mut share_memory = ShareMemory::new();
+        let message = "".to_string();
+        let response = share_memory.receive_message(message);
+        assert_eq!(response, "Err\r\n");
+    }
+    #[test]
+    fn test_receive_message_error_wrong_format() {
+        let mut share_memory = ShareMemory::new();
+        let message = "sexxxxxx1".to_string();
+        let response = share_memory.receive_message(message);
+        assert_eq!(response, "Err\r\n");
+
+        let mut share_memory = ShareMemory::new();
+        let message = "".to_string();
+        let response = share_memory.receive_message(message);
+        assert_eq!(response, "Err\r\n");
+    }
+}
