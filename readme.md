@@ -36,3 +36,8 @@ node example/nodejs/simple/example_1.js
 #/ get
 node example/nodejs/simple/example_2.js
 ```
+
+## docker build 
+```sh
+docker build -t mdis .
+```
