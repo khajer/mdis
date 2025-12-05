@@ -1,12 +1,40 @@
+use chrono::Utc;
 use std::collections::HashMap;
 
+use std::env;
+
+pub struct ObjectMemory {
+    pub txt: String,
+    pub duration_sec: i64,
+    pub created_at: i64,
+}
+
+impl ObjectMemory {
+    pub fn get_key_duration(&self, curr_time: i64) -> Option<String> {
+        let duration = curr_time - self.created_at;
+        if duration > self.duration_sec {
+            None
+        } else {
+            Some(self.txt.clone())
+        }
+    }
+}
+
 pub struct ShareMemory {
-    pub data: HashMap<String, String>,
+    pub data: HashMap<String, ObjectMemory>,
+    pub duration_sec: i64,
 }
 impl ShareMemory {
     pub fn new() -> Self {
+        // 60 seconds * 5 minute = 300 seconds
+        let default_duration = env::var("DEFAULT_DURATION")
+            .unwrap_or("300".to_string())
+            .parse::<i64>()
+            .unwrap_or(300);
+
         Self {
             data: HashMap::new(),
+            duration_sec: default_duration,
         }
     }
 
@@ -20,18 +48,32 @@ impl ShareMemory {
             if method_name == "set" {
                 let key_data = header_message[1].to_string();
                 let value = parts[1].to_string();
-                self.data.insert(key_data, value);
+
+                self.data.insert(
+                    key_data,
+                    ObjectMemory {
+                        txt: value,
+                        duration_sec: self.duration_sec,
+                        created_at: Utc::now().timestamp(),
+                    },
+                );
 
                 return "OK\ninsert completed\r\n".to_string();
             } else if method_name == "get" {
                 let key_data = header_message[1].to_string();
-                let result = self
-                    .data
-                    .get(&key_data)
-                    .cloned()
-                    .unwrap_or_else(|| "".to_string());
-
-                return "OK\n".to_string() + &result + "\r\n";
+                match self.data.get(&key_data) {
+                    Some(result) => {
+                        if let Some(v) = result.get_key_duration(Utc::now().timestamp()) {
+                            return "OK\n".to_string() + &v + "\r\n";
+                        } else {
+                            self.data.remove(&key_data);
+                            return "Err\r\n".to_string();
+                        }
+                    }
+                    None => {
+                        return "OK\n\r\n".to_string();
+                    }
+                }
             } else {
                 return "Err\r\n".to_string();
             }
@@ -43,6 +85,7 @@ impl ShareMemory {
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
 
     #[test]
@@ -96,5 +139,55 @@ mod tests {
         let message = "".to_string();
         let response = share_memory.receive_message(message);
         assert_eq!(response, "Err\r\n");
+    }
+
+    #[test]
+    fn test_get_key_duration_success() {
+        let duration = 100;
+        let test_text = "".to_string();
+        let obj_mem = ObjectMemory {
+            duration_sec: duration,
+            txt: test_text.clone(),
+            created_at: Utc::now().timestamp(),
+        };
+        let curr = Utc::now().timestamp();
+        if let Some(value) = obj_mem.get_key_duration(curr) {
+            assert_eq!(value, test_text);
+        } else {
+            assert!(false);
+        }
+    }
+
+    #[test]
+    fn test_get_key_duration_success_duration() {
+        let duration = 100;
+        let test_text = "".to_string();
+        let obj_mem = ObjectMemory {
+            duration_sec: duration,
+            txt: test_text.clone(),
+            created_at: Utc::now().timestamp(),
+        };
+        let curr = Utc::now().timestamp() + duration;
+        if let Some(value) = obj_mem.get_key_duration(curr) {
+            assert_eq!(value, test_text);
+        } else {
+            assert!(false);
+        }
+    }
+    #[test]
+    fn test_get_key_duration_fails_sec() {
+        let duration = 100;
+        let test_text = "".to_string();
+        let obj_mem = ObjectMemory {
+            duration_sec: duration,
+            txt: test_text.clone(),
+            created_at: Utc::now().timestamp(),
+        };
+        let curr = Utc::now().timestamp() + duration + 20;
+        if let Some(_value) = obj_mem.get_key_duration(curr) {
+            assert!(false);
+        } else {
+            assert!(true);
+        }
     }
 }
