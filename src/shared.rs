@@ -27,7 +27,7 @@ pub struct ShareMemory {
 impl ShareMemory {
     pub fn new() -> Self {
         // 60 seconds * 5 minute = 300 seconds
-        let default_duration = env::var("DEFAULT_DURATION")
+        let default_duration = env::var("EXPIRE_TIMEOUT")
             .unwrap_or("300".to_string())
             .parse::<i64>()
             .unwrap_or(300);
