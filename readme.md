@@ -17,7 +17,9 @@ docker run -p 6411:6411 mdis
 ```
 
 By default, the data expires after 5 minutes. You can change this timeout by setting the `EXPIRE_TIMEOUT` environment variable.
-
+```sh
+docker run -p 6411:6411 mdis env EXPIRE_TIMEOUT=10000
+```
 ## how to use 
 
 javascript 
