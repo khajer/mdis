@@ -140,12 +140,16 @@ class MdisClient:
 
             return self.parse_response(response)
 
-    def set(self, key: str, value: Any) -> Any:
+    def set(self, key: str, value: Any, exp_dur: int = 0) -> Any:
         """Set a key-value pair."""
         with self._lock:
             self.data[key] = value
 
-        command = f"SET {key}\n{value}\r\n"
+        if exp_dur != 0:
+            command = f"EXPIRE {key} {exp_dur}\n\r\n"
+        else:
+            command = f"SET {key}\n{value}\r\n"
+
         response = self._send_command(command)
 
         # Store the response locally for reference

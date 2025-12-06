@@ -19,6 +19,19 @@ class MdisClient {
       });
     });
   }
+  set(key, value, expire_duration) {
+    return new Promise((resolve, reject) => {
+      const client = new net.Socket();
+      client.connect(this.port, this.host, () => {
+        client.write(`SET ${key} ${expire_duration}\n${value}\r\n`);
+        client.on("data", (data) => {
+          client.end();
+
+          resolve(parseResponse(data));
+        });
+      });
+    });
+  }
 
   get(key) {
     return new Promise((resolve, reject) => {
