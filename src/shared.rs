@@ -22,19 +22,11 @@ impl ObjectMemory {
 
 pub struct ShareMemory {
     pub data: HashMap<String, ObjectMemory>,
-    pub duration_sec: i64,
 }
 impl ShareMemory {
     pub fn new() -> Self {
-        // 60 seconds * 5 minute = 300 seconds
-        let default_duration = env::var("EXPIRE_TIMEOUT")
-            .unwrap_or("300".to_string())
-            .parse::<i64>()
-            .unwrap_or(300);
-
         Self {
             data: HashMap::new(),
-            duration_sec: default_duration,
         }
     }
 
@@ -43,17 +35,36 @@ impl ShareMemory {
         let header = parts[0];
         let header_message: Vec<&str> = header.split(' ').collect();
 
-        if header_message.len() == 2 {
+        if header_message.len() >= 2 {
             let method_name = header_message[0].to_string().to_lowercase();
             if method_name == "set" {
                 let key_data = header_message[1].to_string();
                 let value = parts[1].to_string();
 
+                let expire_timeout;
+                if header_message.len() == 3 {
+                    let expire_timeout_str = header_message[2].to_string();
+                    if let Ok(result) = expire_timeout_str.parse::<i64>() {
+                        expire_timeout = result;
+                    } else {
+                        expire_timeout = env::var("EXPIRE_TIMEOUT")
+                            .unwrap_or("300".to_string())
+                            .parse::<i64>()
+                            .unwrap_or(300);
+                    }
+                } else {
+                    // 60 seconds * 5 minute = 300 seconds
+                    expire_timeout = env::var("EXPIRE_TIMEOUT")
+                        .unwrap_or("300".to_string())
+                        .parse::<i64>()
+                        .unwrap_or(300);
+                }
+
                 self.data.insert(
                     key_data,
                     ObjectMemory {
                         txt: value,
-                        duration_sec: self.duration_sec,
+                        duration_sec: expire_timeout,
                         created_at: Utc::now().timestamp(),
                     },
                 );
