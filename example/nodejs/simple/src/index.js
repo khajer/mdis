@@ -55,13 +55,17 @@ class MdisClient {
 
 function parseResponse(data) {
   let response = data.toString();
-
+  console.log(data.toString());
   let resp = response.split("\n");
 
   if (resp[0].toString().toLowerCase() === "ok") {
     return resp[1].toString().trim();
-  } else if (resp[0].toString().toLowerCase() === "err") {
-    return "Error:" + resp[1].toString().trim();
+  } else if (resp[0].toString().trim().toLowerCase() === "err") {
+    if (resp.length > 1) {
+      return "Error:" + resp[1].toString().trim();
+    } else {
+      return "Error";
+    }
   }
   return "NO RESPONSE";
 }
