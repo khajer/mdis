@@ -104,7 +104,7 @@ class MdisClient:
             The parsed response value or error message
         """
         response = data
-        resp = response.split("\n")
+        resp = response.split("\r\n")
 
         if len(resp) >= 2 and resp[0].lower() == "ok":
             return resp[1].strip()
@@ -148,7 +148,7 @@ class MdisClient:
         if exp_dur != 0:
             command = f"EXPIRE {key} {exp_dur}\n\r\n"
         else:
-            command = f"SET {key}\n{value}\r\n"
+            command = f"SET {key}\r\n{value}\r\n"
 
         response = self._send_command(command)
 
@@ -160,7 +160,7 @@ class MdisClient:
 
     def get(self, key: str) -> Any:
         """Get a value by key."""
-        command = f"GET {key}\n\r\n"
+        command = f"GET {key}\r\n\r\n"
         response = self._send_command(command)
 
         # Store the response locally for reference
