@@ -1,32 +1,25 @@
 const net = require("net");
 
 class MdisClient {
-  constructor() {
-    this.host = "127.0.0.1";
-    this.port = 6411;
+  constructor(host = "127.0.0.1", port = 6411) {
+    this.host = host;
+    this.port = port;
   }
 
-  set(key, value) {
-    return new Promise((resolve, reject) => {
-      const client = new net.Socket();
-      client.connect(this.port, this.host, () => {
-        client.write(`SET ${key}\n${value}\r\n`);
-        client.on("data", (data) => {
-          client.end();
-
-          resolve(parseResponse(data));
-        });
-      });
-    });
-  }
   set(key, value, expire_duration) {
     return new Promise((resolve, reject) => {
       const client = new net.Socket();
       client.connect(this.port, this.host, () => {
-        client.write(`SET ${key} ${expire_duration}\n${value}\r\n`);
+        let message;
+        if (expire_duration !== undefined) {
+          message = `set ${key} ${expire_duration}\r\n${value}`;
+        } else {
+          message = `set ${key}\r\n${value}`;
+        }
+
+        client.write(message);
         client.on("data", (data) => {
           client.end();
-
           resolve(parseResponse(data));
         });
       });
@@ -37,35 +30,45 @@ class MdisClient {
     return new Promise((resolve, reject) => {
       const client = new net.Socket();
       client.connect(this.port, this.host, () => {
-        client.write(`GET ${key}\n\r\n`);
+        client.write(`get ${key}`);
         client.on("data", (data) => {
           client.end();
-
           resolve(parseResponse(data));
+        });
+
+        client.on("error", (err) => {
+          reject(err);
         });
       });
     });
   }
 
   static connect(host = "127.0.0.1", port = 6411) {
-    const client = new MdisClient(host, port);
-    return client;
+    return new MdisClient(host, port);
   }
 }
 
 function parseResponse(data) {
-  let response = data.toString();
-  console.log(data.toString());
-  let resp = response.split("\n");
+  const response = data.toString();
+  const resp = response.split("\r\n");
 
-  if (resp[0].toString().toLowerCase() === "ok") {
-    return resp[1].toString().trim();
-  } else if (resp[0].toString().trim().toLowerCase() === "err") {
-    if (resp.length > 1) {
-      return "Error:" + resp[1].toString().trim();
-    } else {
-      return "Error";
+  // Remove empty strings that might result from split
+  const filteredResp = resp.filter((line) => line !== "");
+
+  if (filteredResp[0] && filteredResp[0].toLowerCase() === "ok") {
+    // For successful get operations, the value is at index 1
+    // For set operations, the message is at index 1
+    if (filteredResp.length > 1) {
+      return filteredResp[1];
     }
+    // Empty value for key that doesn't exist
+    return "";
+  } else if (filteredResp[0] && filteredResp[0].toLowerCase() === "err") {
+    // Error case
+    if (filteredResp.length > 1) {
+      return "Error:" + filteredResp[1];
+    }
+    return "Error";
   }
   return "NO RESPONSE";
 }
