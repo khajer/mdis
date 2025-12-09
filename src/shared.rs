@@ -39,26 +39,31 @@ impl ShareMemory {
             let method_name = header_message[0].to_string().to_lowercase();
             if method_name == "set" {
                 let key_data = header_message[1].to_string();
-                let value = parts[1].to_string();
 
-                let expire_timeout;
-                if header_message.len() == 3 {
-                    let expire_timeout_str = header_message[2].to_string();
-                    if let Ok(result) = expire_timeout_str.parse::<i64>() {
-                        expire_timeout = result;
+                let mut expire_timeout = env::var("EXPIRE_TIMEOUT")
+                    .unwrap_or("300".to_string())
+                    .parse::<i64>()
+                    .unwrap_or(300);
+
+                let mut value_line = 2;
+
+                if parts.len() > 2 && !parts[1].is_empty() {
+                    let duration_parts: Vec<&str> = parts[1].split(' ').collect();
+                    if duration_parts.len() == 2 && duration_parts[0].to_lowercase() == "duration" {
+                        if let Ok(duration) = duration_parts[1].parse::<i64>() {
+                            expire_timeout = duration;
+                        }
+                        value_line = 3;
                     } else {
-                        expire_timeout = env::var("EXPIRE_TIMEOUT")
-                            .unwrap_or("300".to_string())
-                            .parse::<i64>()
-                            .unwrap_or(300);
+                        return "Err\r\n".to_string();
                     }
-                } else {
-                    // 60 seconds * 5 minute = 300 seconds
-                    expire_timeout = env::var("EXPIRE_TIMEOUT")
-                        .unwrap_or("300".to_string())
-                        .parse::<i64>()
-                        .unwrap_or(300);
                 }
+
+                if parts.len() <= value_line || !parts[value_line - 1].is_empty() {
+                    return "Err\r\n".to_string();
+                }
+
+                let value = parts.get(value_line).unwrap_or(&"").to_string();
 
                 self.data.insert(
                     key_data,
@@ -75,7 +80,7 @@ impl ShareMemory {
                 match self.data.get(&key_data) {
                     Some(result) => {
                         if let Some(v) = result.get_key_duration(Utc::now().timestamp()) {
-                            return "OK\r\n".to_string() + &v + "\r\n";
+                            return "OK\r\n\r\n".to_string() + &v + "\r\n";
                         } else {
                             self.data.remove(&key_data);
                             return "Err\r\n".to_string();
@@ -97,18 +102,20 @@ impl ShareMemory {
 #[cfg(test)]
 mod tests {
 
+    use tokio::time;
+
     use super::*;
 
     #[test]
     fn test_receive_message_ok_blank() {
         let mut share_memory = ShareMemory::new();
-        let message = "set key1\r\nvalue1".to_string();
+        let message = "set key1\r\n\r\nvalue1\r\n".to_string();
         let response = share_memory.receive_message(message);
         assert_eq!(response, "OK\r\ninsert completed\r\n");
 
         let message = "get key1".to_string();
         let response = share_memory.receive_message(message);
-        assert_eq!(response, "OK\r\nvalue1\r\n");
+        assert_eq!(response, "OK\r\n\r\nvalue1\r\n");
 
         let message = "get key2".to_string();
         let response = share_memory.receive_message(message);
@@ -116,15 +123,23 @@ mod tests {
     }
 
     #[test]
+    fn test_receive_message_ok_set_error() {
+        let mut share_memory = ShareMemory::new();
+        let message = "set key1\r\nvalue1\r\n".to_string();
+        let response = share_memory.receive_message(message);
+        assert_eq!(response, "Err\r\n");
+    }
+
+    #[test]
     fn test_receive_message_ok_value() {
         let mut share_memory = ShareMemory::new();
-        let message = "set key2\r\nvalue2".to_string();
+        let message = "set key2\r\n\r\nvalue2".to_string();
         let response = share_memory.receive_message(message);
         assert_eq!(response, "OK\r\ninsert completed\r\n");
 
         let message = "get key2".to_string();
         let response = share_memory.receive_message(message);
-        assert_eq!(response, "OK\r\nvalue2\r\n");
+        assert_eq!(response, "OK\r\n\r\nvalue2\r\n");
     }
 
     #[test]
@@ -150,6 +165,53 @@ mod tests {
         let message = "".to_string();
         let response = share_memory.receive_message(message);
         assert_eq!(response, "Err\r\n");
+    }
+
+    #[test]
+    fn test_set_duration_success() {
+        let mut share_memory = ShareMemory::new();
+        let message = "set key2\r\nduration 300\r\n\r\nvalue2".to_string();
+        let response = share_memory.receive_message(message);
+        assert_eq!(response, "OK\r\ninsert completed\r\n");
+
+        let message = "get key2".to_string();
+        let response = share_memory.receive_message(message);
+        assert_eq!(response, "OK\r\n\r\nvalue2\r\n");
+    }
+    #[test]
+    fn test_set_duration_success_1sec() {
+        let mut share_memory = ShareMemory::new();
+        let message = "set key2\r\nduration 1\r\n\r\nvalue2".to_string();
+        let response = share_memory.receive_message(message);
+        assert_eq!(response, "OK\r\ninsert completed\r\n");
+
+        let message = "get key2".to_string();
+        let response = share_memory.receive_message(message);
+        assert_eq!(response, "OK\r\n\r\nvalue2\r\n");
+    }
+
+    #[test]
+    fn test_set_duration_success_1second() {
+        let mut share_memory = ShareMemory::new();
+        let message = "set key2\r\nduration 1\r\n\r\nvalue2".to_string();
+        let response = share_memory.receive_message(message);
+        assert_eq!(response, "OK\r\ninsert completed\r\n");
+
+        let message = "get key2".to_string();
+        let response = share_memory.receive_message(message);
+        assert_eq!(response, "OK\r\n\r\nvalue2\r\n");
+    }
+
+    #[test]
+    fn test_set_duration() {
+        let mut share_memory = ShareMemory::new();
+        let message = "set key2\r\n\r\nvalue2".to_string();
+        let response = share_memory.receive_message(message);
+        assert_eq!(response, "OK\r\ninsert completed\r\n");
+
+        let message = "get key2".to_string();
+        let response = share_memory.receive_message(message);
+        assert_eq!(response, "OK\r\n\r\nvalue2\r\n");
     }
 
     #[test]

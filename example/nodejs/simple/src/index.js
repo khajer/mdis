@@ -12,9 +12,9 @@ class MdisClient {
       client.connect(this.port, this.host, () => {
         let message;
         if (expire_duration !== undefined) {
-          message = `set ${key} ${expire_duration}\r\n${value}`;
+          message = `set ${key}\r\nduration ${expire_duration}\r\n\r\n${value}\r\n`;
         } else {
-          message = `set ${key}\r\n${value}`;
+          message = `set ${key}\r\n\r\n${value}\r\n`;
         }
 
         client.write(message);
@@ -30,7 +30,7 @@ class MdisClient {
     return new Promise((resolve, reject) => {
       const client = new net.Socket();
       client.connect(this.port, this.host, () => {
-        client.write(`get ${key}`);
+        client.write(`get ${key}\r\n`);
         client.on("data", (data) => {
           client.end();
           resolve(parseResponse(data));
@@ -52,22 +52,25 @@ function parseResponse(data) {
   const response = data.toString();
   const resp = response.split("\r\n");
 
-  // Remove empty strings that might result from split
-  const filteredResp = resp.filter((line) => line !== "");
+  // The first line should be OK or ERR
+  const status = resp[0] ? resp[0].toLowerCase() : "";
 
-  if (filteredResp[0] && filteredResp[0].toLowerCase() === "ok") {
-    // For successful get operations, the value is at index 1
-    // For set operations, the message is at index 1
-    if (filteredResp.length > 1) {
-      return filteredResp[1];
+  if (status === "ok") {
+    // For get operations, format is "OK\r\n\r\n[value]\r\n"
+    // For set operations, format is "OK\r\ninsert completed\r\n"
+    if (resp.length >= 3 && resp[1] === "") {
+      // Get operation with value
+      return resp[2] || "";
+    } else if (resp.length >= 2 && resp[1] !== "") {
+      // Set operation response
+      return resp[1];
+    } else if (resp.length >= 2 && resp[1] === "") {
+      // Get operation with empty value
+      return "";
     }
-    // Empty value for key that doesn't exist
     return "";
-  } else if (filteredResp[0] && filteredResp[0].toLowerCase() === "err") {
+  } else if (status === "err") {
     // Error case
-    if (filteredResp.length > 1) {
-      return "Error:" + filteredResp[1];
-    }
     return "Error";
   }
   return "NO RESPONSE";
