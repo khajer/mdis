@@ -39,7 +39,11 @@ impl ShareMemory {
             let method_name = header_message[0].to_string().to_lowercase();
             if method_name == "set" {
                 let key_data = header_message[1].to_string();
-                let value = parts[1].to_string();
+                if parts.len() <= 2 || !parts[1].is_empty() {
+                    return "Err\r\n".to_string();
+                }
+
+                let value = parts.get(2).unwrap_or(&"").to_string();
 
                 let expire_timeout;
                 if header_message.len() == 3 {
@@ -75,7 +79,7 @@ impl ShareMemory {
                 match self.data.get(&key_data) {
                     Some(result) => {
                         if let Some(v) = result.get_key_duration(Utc::now().timestamp()) {
-                            return "OK\r\n".to_string() + &v + "\r\n";
+                            return "OK\r\n\r\n".to_string() + &v + "\r\n";
                         } else {
                             self.data.remove(&key_data);
                             return "Err\r\n".to_string();
@@ -102,13 +106,13 @@ mod tests {
     #[test]
     fn test_receive_message_ok_blank() {
         let mut share_memory = ShareMemory::new();
-        let message = "set key1\r\nvalue1".to_string();
+        let message = "set key1\r\n\r\nvalue1\r\n".to_string();
         let response = share_memory.receive_message(message);
         assert_eq!(response, "OK\r\ninsert completed\r\n");
 
         let message = "get key1".to_string();
         let response = share_memory.receive_message(message);
-        assert_eq!(response, "OK\r\nvalue1\r\n");
+        assert_eq!(response, "OK\r\n\r\nvalue1\r\n");
 
         let message = "get key2".to_string();
         let response = share_memory.receive_message(message);
@@ -116,15 +120,23 @@ mod tests {
     }
 
     #[test]
+    fn test_receive_message_ok_set_error() {
+        let mut share_memory = ShareMemory::new();
+        let message = "set key1\r\nvalue1\r\n".to_string();
+        let response = share_memory.receive_message(message);
+        assert_eq!(response, "Err\r\n");
+    }
+
+    #[test]
     fn test_receive_message_ok_value() {
         let mut share_memory = ShareMemory::new();
-        let message = "set key2\r\nvalue2".to_string();
+        let message = "set key2\r\n\r\nvalue2".to_string();
         let response = share_memory.receive_message(message);
         assert_eq!(response, "OK\r\ninsert completed\r\n");
 
         let message = "get key2".to_string();
         let response = share_memory.receive_message(message);
-        assert_eq!(response, "OK\r\nvalue2\r\n");
+        assert_eq!(response, "OK\r\n\r\nvalue2\r\n");
     }
 
     #[test]
