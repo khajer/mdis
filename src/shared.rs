@@ -49,8 +49,11 @@ impl ShareMemory {
 
                 if parts.len() > 2 && !parts[1].is_empty() {
                     let duration_parts: Vec<&str> = parts[1].split(' ').collect();
-                    if duration_parts.len() == 2 && duration_parts[0].to_lowercase() == "duration" {
-                        if let Ok(duration) = duration_parts[1].parse::<i64>() {
+                    if duration_parts.len() == 2 && duration_parts[0].to_lowercase() == "duration:"
+                    {
+                        //set duration
+                        let duration_str = duration_parts[1];
+                        if let Ok(duration) = duration_str.parse::<i64>() {
                             expire_timeout = duration;
                         }
                         value_line = 3;
@@ -101,9 +104,6 @@ impl ShareMemory {
 
 #[cfg(test)]
 mod tests {
-
-    use tokio::time;
-
     use super::*;
 
     #[test]
@@ -170,7 +170,7 @@ mod tests {
     #[test]
     fn test_set_duration_success() {
         let mut share_memory = ShareMemory::new();
-        let message = "set key2\r\nduration 300\r\n\r\nvalue2".to_string();
+        let message = "set key2\r\nduration: 300\r\n\r\nvalue2".to_string();
         let response = share_memory.receive_message(message);
         assert_eq!(response, "OK\r\ninsert completed\r\n");
 
@@ -178,10 +178,11 @@ mod tests {
         let response = share_memory.receive_message(message);
         assert_eq!(response, "OK\r\n\r\nvalue2\r\n");
     }
+
     #[test]
     fn test_set_duration_success_1sec() {
         let mut share_memory = ShareMemory::new();
-        let message = "set key2\r\nduration 1\r\n\r\nvalue2".to_string();
+        let message = "set key2\r\nduration: 1\r\n\r\nvalue2".to_string();
         let response = share_memory.receive_message(message);
         assert_eq!(response, "OK\r\ninsert completed\r\n");
 
@@ -193,7 +194,7 @@ mod tests {
     #[test]
     fn test_set_duration_success_1second() {
         let mut share_memory = ShareMemory::new();
-        let message = "set key2\r\nduration 1\r\n\r\nvalue2".to_string();
+        let message = "set key2\r\nduration: 1\r\n\r\nvalue2".to_string();
         let response = share_memory.receive_message(message);
         assert_eq!(response, "OK\r\ninsert completed\r\n");
 

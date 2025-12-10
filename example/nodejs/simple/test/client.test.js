@@ -35,7 +35,7 @@ function createMockServer() {
               const durationParts = parts[1].split(" ");
               if (
                 durationParts.length === 2 &&
-                durationParts[0].toLowerCase() === "duration"
+                durationParts[0].toLowerCase() === "duration:"
               ) {
                 expireProvided = true;
                 valueLine = 3;
