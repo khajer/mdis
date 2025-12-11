@@ -106,10 +106,25 @@ class MdisClient:
         response = data
         resp = response.split("\r\n")
 
-        if len(resp) >= 2 and resp[0].lower() == "ok":
-            return resp[1].strip()
-        elif len(resp) >= 2 and resp[0].lower() == "err":
-            return "Error:" + resp[1].strip()
+        # The first line should be OK or ERR
+        status = resp[0].lower() if resp else ""
+
+        if status == "ok":
+            # For get operations, format is "OK\r\n\r\n[value]\r\n"
+            # For set operations, format is "OK\r\ninsert completed\r\n"
+            if len(resp) >= 3 and resp[1] == "":
+                # Get operation with value
+                return resp[2] or ""
+            elif len(resp) >= 2 and resp[1] != "":
+                # Set operation response
+                return resp[1]
+            elif len(resp) >= 2 and resp[1] == "":
+                # Get operation with empty value
+                return ""
+            return ""
+        elif status == "err":
+            # Error case
+            return "Error"
 
         return "NO RESPONSE"
 
@@ -146,9 +161,9 @@ class MdisClient:
             self.data[key] = value
 
         if exp_dur != 0:
-            command = f"EXPIRE {key} {exp_dur}\n\r\n"
+            command = f"set {key}\r\nduration: {exp_dur}\r\n\r\n{value}\r\n"
         else:
-            command = f"SET {key}\r\n{value}\r\n"
+            command = f"set {key}\r\n\r\n{value}\r\n"
 
         response = self._send_command(command)
 
@@ -160,7 +175,7 @@ class MdisClient:
 
     def get(self, key: str) -> Any:
         """Get a value by key."""
-        command = f"GET {key}\r\n\r\n"
+        command = f"get {key}\r\n"
         response = self._send_command(command)
 
         # Store the response locally for reference

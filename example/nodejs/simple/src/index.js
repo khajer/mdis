@@ -12,7 +12,7 @@ class MdisClient {
       client.connect(this.port, this.host, () => {
         let message;
         if (expire_duration !== undefined) {
-          message = `set ${key}\r\nduration ${expire_duration}\r\n\r\n${value}\r\n`;
+          message = `set ${key}\r\nduration: ${expire_duration}\r\n\r\n${value}\r\n`;
         } else {
           message = `set ${key}\r\n\r\n${value}\r\n`;
         }
