@@ -1,6 +1,7 @@
-use std::sync::{Arc, Mutex};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use std::sync::Arc;
+use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
+use tokio::sync::Mutex;
 
 mod shared;
 use shared::ShareMemory;
@@ -17,32 +18,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("Accepted connection from {}", addr);
 
         tokio::spawn(async move {
-            // buffer read
-            let mut buf = [0; 4096];
-
-            loop {
-                // read from socket
-                let n = match socket.read(&mut buf).await {
-                    Ok(0) => return,
-                    Ok(n) => n,
-                    Err(e) => {
-                        eprintln!("failed to read from socket; err = {:?}", e);
+            let mut sm = shared_memory_clone.lock().await;
+            match sm.recv_data(&mut socket).await {
+                Ok(response) => {
+                    if let Err(e) = socket.write_all(response.as_bytes()).await {
+                        eprintln!("Failed to write to socket; err = {:?}", e);
                         return;
                     }
-                };
-
-                let resp;
-                let incoming_message = String::from_utf8_lossy(&buf[..n]);
-
-                if let Ok(mut sm) = shared_memory_clone.lock() {
-                    resp = sm.receive_message(incoming_message.to_string());
-                } else {
-                    resp = "".to_string();
+                    println!("Response sent: {}", response);
                 }
-
-                // write to socket
-                if let Err(e) = socket.write_all(resp.as_bytes()).await {
-                    eprintln!("failed to write to socket; err = {:?}", e);
+                Err(e) => {
+                    eprintln!("Failed to receive data: {:?}", e);
                     return;
                 }
             }
