@@ -31,47 +31,53 @@ impl ShareMemory {
     }
 
     pub fn receive_message(&mut self, message: String) -> String {
-        let parts: Vec<&str> = message.split("\r\n").collect();
-        let header = parts[0];
-        let header_message: Vec<&str> = header.split(' ').collect();
+        if message.contains("\r\n\r\n") {
+            let message_parts: Vec<&str> = message.split("\r\n\r\n").collect();
+            if message_parts.len() != 2 {
+                return "Err\r\n".to_string();
+            }
 
-        if header_message.len() >= 2 {
-            let method_name = header_message[0].to_string().to_lowercase();
+            let header_part = message_parts[0];
+            let data_part = message_parts[1];
+
+            let header_lines: Vec<&str> = header_part.split("\r\n").collect();
+            if header_lines.is_empty() {
+                return "Err\r\n".to_string();
+            }
+
+            let first_line_parts: Vec<&str> = header_lines[0].split(' ').collect();
+            if first_line_parts.len() < 2 {
+                return "Err\r\n".to_string();
+            }
+
+            let method_name = first_line_parts[0].to_string().to_lowercase();
+            let key_data = first_line_parts[1].to_string();
+
             if method_name == "set" {
-                let key_data = header_message[1].to_string();
-
                 let mut expire_timeout = env::var("EXPIRE_TIMEOUT")
                     .unwrap_or("300".to_string())
                     .parse::<i64>()
                     .unwrap_or(300);
 
-                let mut value_line = 2;
-
-                if parts.len() > 2 && !parts[1].is_empty() {
-                    let duration_parts: Vec<&str> = parts[1].split(' ').collect();
-                    if duration_parts.len() == 2 && duration_parts[0].to_lowercase() == "duration:"
-                    {
-                        //set duration
-                        let duration_str = duration_parts[1];
-                        if let Ok(duration) = duration_str.parse::<i64>() {
+                for line in header_lines.iter().skip(1) {
+                    let parts: Vec<&str> = line.split(' ').collect();
+                    if parts.len() == 2 && parts[0].to_lowercase() == "duration:" {
+                        if let Ok(duration) = parts[1].parse::<i64>() {
                             expire_timeout = duration;
                         }
-                        value_line = 3;
-                    } else {
-                        return "Err\r\n".to_string();
                     }
                 }
 
-                if parts.len() <= value_line || !parts[value_line - 1].is_empty() {
-                    return "Err\r\n".to_string();
-                }
-
-                let value = parts.get(value_line).unwrap_or(&"").to_string();
+                let trimmed_data = if data_part.ends_with("\r\n") {
+                    &data_part[..data_part.len() - 2]
+                } else {
+                    data_part
+                };
 
                 self.data.insert(
                     key_data,
                     ObjectMemory {
-                        txt: value,
+                        txt: trimmed_data.to_string(),
                         duration_sec: expire_timeout,
                         created_at: Utc::now().timestamp(),
                     },
@@ -79,7 +85,6 @@ impl ShareMemory {
 
                 return "OK\r\ninsert completed\r\n".to_string();
             } else if method_name == "get" {
-                let key_data = header_message[1].to_string();
                 match self.data.get(&key_data) {
                     Some(result) => {
                         if let Some(v) = result.get_key_duration(Utc::now().timestamp()) {
@@ -96,9 +101,77 @@ impl ShareMemory {
             } else {
                 return "Err\r\n".to_string();
             }
-        }
+        } else {
+            let parts: Vec<&str> = message.split("\r\n").collect();
+            let header = parts[0];
+            let header_message: Vec<&str> = header.split(' ').collect();
 
-        "Err\r\n".to_string()
+            if header_message.len() >= 2 {
+                let method_name = header_message[0].to_string().to_lowercase();
+                if method_name == "set" {
+                    let key_data = header_message[1].to_string();
+
+                    let mut expire_timeout = env::var("EXPIRE_TIMEOUT")
+                        .unwrap_or("300".to_string())
+                        .parse::<i64>()
+                        .unwrap_or(300);
+
+                    let mut value_line = 2;
+
+                    if parts.len() > 2 && !parts[1].is_empty() {
+                        let duration_parts: Vec<&str> = parts[1].split(' ').collect();
+                        if duration_parts.len() == 2
+                            && duration_parts[0].to_lowercase() == "duration:"
+                        {
+                            //set duration
+                            let duration_str = duration_parts[1];
+                            if let Ok(duration) = duration_str.parse::<i64>() {
+                                expire_timeout = duration;
+                            }
+                            value_line = 3;
+                        } else {
+                            return "Err\r\n".to_string();
+                        }
+                    }
+
+                    if parts.len() <= value_line || !parts[value_line - 1].is_empty() {
+                        return "Err\r\n".to_string();
+                    }
+
+                    let value = parts.get(value_line).unwrap_or(&"").to_string();
+
+                    self.data.insert(
+                        key_data,
+                        ObjectMemory {
+                            txt: value,
+                            duration_sec: expire_timeout,
+                            created_at: Utc::now().timestamp(),
+                        },
+                    );
+
+                    return "OK\r\ninsert completed\r\n".to_string();
+                } else if method_name == "get" {
+                    let key_data = header_message[1].to_string();
+                    match self.data.get(&key_data) {
+                        Some(result) => {
+                            if let Some(v) = result.get_key_duration(Utc::now().timestamp()) {
+                                return "OK\r\n\r\n".to_string() + &v + "\r\n";
+                            } else {
+                                self.data.remove(&key_data);
+                                return "Err\r\n".to_string();
+                            }
+                        }
+                        None => {
+                            return "OK\r\n\r\n".to_string();
+                        }
+                    }
+                } else {
+                    return "Err\r\n".to_string();
+                }
+            }
+
+            "Err\r\n".to_string()
+        }
     }
 }
 
