@@ -1,8 +1,8 @@
 use chrono::Utc;
 use std::collections::HashMap;
-
 use std::env;
-
+use tokio::io::{AsyncReadExt, Error};
+use tokio::net::TcpStream;
 pub struct ObjectMemory {
     pub txt: String,
     pub duration_sec: i64,
@@ -27,6 +27,24 @@ impl ShareMemory {
     pub fn new() -> Self {
         Self {
             data: HashMap::new(),
+        }
+    }
+    pub async fn recv_data(&mut self, socket: &mut TcpStream) -> Result<String, Error> {
+        let mut buf = [0; 4096];
+
+        match socket.read(&mut buf).await {
+            Ok(0) => {
+                return Ok("".to_string());
+            }
+            Ok(n) => {
+                let message = String::from_utf8_lossy(&buf[..n]).to_string();
+                let response = self.receive_message(message);
+                Ok(response)
+            }
+            Err(e) => {
+                eprintln!("Failed to read from socket; err = {:?}", e);
+                Err(e)
+            }
         }
     }
 
