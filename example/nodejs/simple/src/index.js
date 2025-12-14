@@ -6,11 +6,30 @@ class MdisClient {
     this.port = port;
   }
 
-  set(key, value, expire_duration) {
+  set(key, dataInput, expire_duration) {
     return new Promise((resolve, reject) => {
       const client = new net.Socket();
+      const dataStr = dataInput.toString();
+      let message;
+      let value;
+
       client.connect(this.port, this.host, () => {
-        let message;
+        if (dataStr.length <= 4096) {
+          value = dataInput;
+        } else {
+          let chunkedData = "";
+          let remainingData = dataStr;
+
+          while (remainingData.length > 0) {
+            const chunkSize = Math.min(4096, remainingData.length);
+            const chunk = remainingData.substring(0, chunkSize);
+
+            chunkedData += `${chunkSize}\r\n${chunk}\r\n`;
+            remainingData = remainingData.substring(chunkSize);
+          }
+          value = chunkedData;
+        }
+
         if (expire_duration !== undefined) {
           message = `set ${key}\r\nduration: ${expire_duration}\r\n\r\n${value}\r\n`;
         } else {
