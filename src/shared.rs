@@ -8,6 +8,8 @@ pub struct ObjectMemory {
     pub duration_sec: i64,
     pub created_at: i64,
 }
+const MAX_BUFFER_SIZE: usize = 4096;
+const EXPIRE_TIMEOUT: i64 = 300;
 
 impl ObjectMemory {
     pub fn get_key_duration(&self, curr_time: i64) -> Option<String> {
@@ -30,7 +32,7 @@ impl ShareMemory {
         }
     }
     pub async fn recv_data(&mut self, socket: &mut TcpStream) -> Result<String, Error> {
-        let mut buf = [0; 4096];
+        let mut buf = [0; MAX_BUFFER_SIZE];
 
         match socket.read(&mut buf).await {
             Ok(0) => {
@@ -73,9 +75,9 @@ impl ShareMemory {
 
             if method_name == "set" {
                 let mut expire_timeout = env::var("EXPIRE_TIMEOUT")
-                    .unwrap_or("300".to_string())
+                    .unwrap_or(EXPIRE_TIMEOUT.to_string())
                     .parse::<i64>()
-                    .unwrap_or(300);
+                    .unwrap_or(EXPIRE_TIMEOUT);
 
                 for line in header_lines.iter().skip(1) {
                     let parts: Vec<&str> = line.split(' ').collect();
@@ -130,10 +132,9 @@ impl ShareMemory {
                     let key_data = header_message[1].to_string();
 
                     let mut expire_timeout = env::var("EXPIRE_TIMEOUT")
-                        .unwrap_or("300".to_string())
+                        .unwrap_or(EXPIRE_TIMEOUT.to_string())
                         .parse::<i64>()
-                        .unwrap_or(300);
-
+                        .unwrap_or(EXPIRE_TIMEOUT);
                     let mut value_line = 2;
 
                     if parts.len() > 2 && !parts[1].is_empty() {

@@ -8,7 +8,9 @@ use shared::ShareMemory;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let listener = TcpListener::bind("127.0.0.1:6411").await?;
+    let host = "127.0.0.1:6411";
+    println!("Starting server at {}", host);
+    let listener = TcpListener::bind(host).await?;
     let shared_memory = Arc::new(Mutex::new(ShareMemory::new()));
 
     loop {
