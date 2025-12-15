@@ -14,9 +14,11 @@ class MdisClient {
       let value;
 
       client.connect(this.port, this.host, () => {
+        let header_more = "";
         if (dataStr.length <= 4096) {
           value = dataInput;
         } else {
+          header_more = "transfer-encoding: chunked\r\n";
           let chunkedData = "";
           let remainingData = dataStr;
 
@@ -27,13 +29,14 @@ class MdisClient {
             chunkedData += `${chunkSize}\r\n${chunk}\r\n`;
             remainingData = remainingData.substring(chunkSize);
           }
+          chunkedData += "0\r\n\r\n";
           value = chunkedData;
         }
 
         if (expire_duration !== undefined) {
-          message = `set ${key}\r\nduration: ${expire_duration}\r\n\r\n${value}\r\n`;
+          message = `set ${key}\r\n${header_more}duration: ${expire_duration}\r\n\r\n${value}\r\n\r\n`;
         } else {
-          message = `set ${key}\r\n\r\n${value}\r\n`;
+          message = `set ${key}${header_more}\r\n\r\n${value}\r\n\r\n`;
         }
 
         client.write(message);
