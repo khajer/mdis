@@ -3,10 +3,10 @@ use std::collections::HashMap;
 use std::env;
 use std::io::Error;
 
+use std::pin::Pin;
+use std::task::{Context, Poll};
 use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio::net::TcpStream;
-use std::task::{Context, Poll};
-use std::pin::Pin;
 
 pub struct ObjectMemory {
     pub raw_data: String,
@@ -36,8 +36,7 @@ impl ShareMemory {
             data: HashMap::new(),
         }
     }
-    pub async fn recv_data(&mut self, socket: &mut TcpStream) -> Result<String, Error>
-{
+    pub async fn recv_data(&mut self, socket: &mut TcpStream) -> Result<String, Error> {
         let mut buf = [0; MAX_BUFFER_SIZE];
 
         match socket.read(&mut buf).await {
@@ -81,11 +80,13 @@ impl ShareMemory {
 
         let header_end = match header_end {
             Some(pos) => pos,
-            None => return Ok(ObjectMemory {
-                duration_sec: 300,
-                raw_data: String::from_utf8_lossy(&buffer).to_string(),
-                created_at: Utc::now().timestamp(),
-            }),
+            None => {
+                return Ok(ObjectMemory {
+                    duration_sec: 300,
+                    raw_data: String::from_utf8_lossy(&buffer).to_string(),
+                    created_at: Utc::now().timestamp(),
+                });
+            }
         };
 
         let header_bytes = &buffer[..header_end];
@@ -93,7 +94,6 @@ impl ShareMemory {
 
         let is_chunked = header.to_lowercase().contains("transfer-encoding: chunked");
         if is_chunked {
-
             let mut remaining_data = Vec::new();
             remaining_data.extend_from_slice(&buffer[header_end + 4..]);
             let mut complete_data = Vec::new();
@@ -101,24 +101,19 @@ impl ShareMemory {
             loop {
                 let chunk_size_end = match remaining_data.windows(2).position(|w| w == b"\r\n") {
                     Some(pos) => pos,
-                    None => {
-                        match reader.read(&mut buf).await {
-                            Ok(0) => break,
-                            Ok(n) => {
-
-                                remaining_data.extend_from_slice(&buf[..n]);
-                                continue;
-                            }
-                            Err(e) => return Err(e),
+                    None => match reader.read(&mut buf).await {
+                        Ok(0) => break,
+                        Ok(n) => {
+                            remaining_data.extend_from_slice(&buf[..n]);
+                            continue;
                         }
-                    }
+                        Err(e) => return Err(e),
+                    },
                 };
 
                 let chunk_size_str = String::from_utf8_lossy(&remaining_data[..chunk_size_end]);
                 let chunk_size = match usize::from_str_radix(chunk_size_str.trim(), 16) {
-                    Ok(size) => {
-                        size
-                    }
+                    Ok(size) => size,
                     Err(_) => {
                         break;
                     }
@@ -160,7 +155,6 @@ impl ShareMemory {
 
                 if remaining_data.len() > trailing_crlf_end {
                     remaining_data = remaining_data[trailing_crlf_end..].to_vec();
-
                 } else {
                     remaining_data.clear();
                 }
@@ -326,6 +320,54 @@ impl ShareMemory {
             }
 
             "Err\r\n\r\n".to_string()
+        }
+    }
+
+    pub fn get_data(&mut self, key: &str) -> String {
+        match self.data.get(key) {
+            Some(result) => {
+                if let Some(val) = result.get_key_duration(Utc::now().timestamp()) {
+                    if val.len() > MAX_BUFFER_SIZE {
+                        let mut response = "OK\r\ntransfer-encoding: chunked\r\n\r\n".to_string();
+
+                        let num_chunks = val.len() / MAX_BUFFER_SIZE;
+                        let remainder = val.len() % MAX_BUFFER_SIZE;
+
+                        //loop  chunk
+                        for i in 0..num_chunks {
+                            let start = i * MAX_BUFFER_SIZE;
+                            let end = start + MAX_BUFFER_SIZE;
+                            let chunk = &val[start..end];
+
+                            response.push_str(&format!("{}\r\n", MAX_BUFFER_SIZE));
+                            response.push_str(chunk);
+                            response.push_str("\r\n");
+                        }
+
+                        if remainder > 0 {
+                            let start = num_chunks * MAX_BUFFER_SIZE;
+                            let chunk = &val[start..];
+
+                            response.push_str(&format!("{}\r\n", remainder));
+                            response.push_str(chunk);
+                            response.push_str("\r\n");
+                        }
+
+                        // final chunk
+                        response.push_str("0\r\n\r\n");
+
+                        response
+                    } else {
+                        "OK\r\n\r\n".to_string() + &val + "\r\n\r\n"
+                    }
+                } else {
+                    self.data.remove(key);
+                    return "Err\r\n".to_string();
+                }
+            }
+            None => {
+                return "OK\r\n\r\n".to_string();
+            }
         }
     }
 }
@@ -536,8 +578,7 @@ mod tests {
         let mut mock_stream = MockTcpStream::new(message.into());
         let result = share_memory.recv_data_raw(&mut mock_stream).await;
         let obj_mem = result.unwrap();
-        assert_eq!(obj_mem.raw_data, v );
-
+        assert_eq!(obj_mem.raw_data, v);
     }
 
     #[tokio::test]
@@ -549,13 +590,94 @@ mod tests {
         let data1 = "a".repeat(num1);
         let data2 = "b".repeat(num2);
 
-        let set_data = format!("set test_key\r\ntransfer-encoding: chunked\r\n\r\n{:X}\r\n{}\r\n{:X}\r\n{}\r\n0\r\n\r\n", data1.len(), data1, data2.len(), data2);
+        let set_data = format!(
+            "set test_key\r\ntransfer-encoding: chunked\r\n\r\n{:X}\r\n{}\r\n{:X}\r\n{}\r\n0\r\n\r\n",
+            data1.len(),
+            data1,
+            data2.len(),
+            data2
+        );
 
         let mut mock_stream = MockTcpStream::new(set_data.into());
         let result = share_memory.recv_data_raw(&mut mock_stream).await;
         let obj_mem = result.unwrap();
-        assert_eq!(obj_mem.raw_data.len(), num1+num2 );
+        assert_eq!(obj_mem.raw_data.len(), num1 + num2);
+    }
+    #[tokio::test]
+    async fn test_recv_n_get_data() {
+        let mut share_memory = ShareMemory::new();
+        let test_data = "a".repeat(1000);
+        let obj_mem = ObjectMemory {
+            duration_sec: 300,
+            raw_data: test_data.clone(),
+            created_at: Utc::now().timestamp(),
+        };
+        share_memory
+            .data
+            .insert("test_large_buffer".to_string(), obj_mem);
 
+        let response = share_memory.get_data("test_large_buffer");
+
+        assert_eq!(response, format!("OK\r\n\r\n{}\r\n\r\n", test_data));
+    }
+    #[tokio::test]
+    async fn test_recv_n_get_data_chunked() {
+        let mut share_memory = ShareMemory::new();
+        let txt_b = "b".repeat(100);
+        let txt_a = "a".repeat(MAX_BUFFER_SIZE);
+        let test_data = txt_a.clone() + &txt_b;
+
+        let obj_mem = ObjectMemory {
+            duration_sec: 300,
+            raw_data: test_data,
+            created_at: Utc::now().timestamp(),
+        };
+        share_memory
+            .data
+            .insert("test_large_buffer".to_string(), obj_mem);
+
+        let response = share_memory.get_data("test_large_buffer");
+
+        assert_eq!(
+            response,
+            format!(
+                "OK\r\ntransfer-encoding: chunked\r\n\r\n{}\r\n{}\r\n{}\r\n{}\r\n0\r\n\r\n",
+                MAX_BUFFER_SIZE,
+                txt_a,
+                txt_b.len(),
+                txt_b
+            )
+        );
     }
 
+    #[tokio::test]
+    async fn test_recv_n_get_data_multiple_chunks() {
+        let mut share_memory = ShareMemory::new();
+        let test_data = "a".repeat(4 * MAX_BUFFER_SIZE + 100);
+
+        let obj_mem = ObjectMemory {
+            duration_sec: 300,
+            raw_data: test_data.clone(),
+            created_at: Utc::now().timestamp(),
+        };
+        share_memory
+            .data
+            .insert("test_multiple_chunks".to_string(), obj_mem);
+
+        let response = share_memory.get_data("test_multiple_chunks");
+        let mut expected_response = "OK\r\ntransfer-encoding: chunked\r\n\r\n".to_string();
+
+        for _ in 0..4 {
+            expected_response.push_str(&format!("{}\r\n", MAX_BUFFER_SIZE));
+            expected_response.push_str(&"a".repeat(MAX_BUFFER_SIZE));
+            expected_response.push_str("\r\n");
+        }
+
+        expected_response.push_str(&format!("100\r\n"));
+        expected_response.push_str(&"a".repeat(100));
+        expected_response.push_str("\r\n");
+        expected_response.push_str("0\r\n\r\n");
+
+        assert_eq!(response, expected_response);
+    }
 }
