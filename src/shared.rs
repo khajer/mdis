@@ -580,6 +580,25 @@ mod tests {
         let obj_mem = result.unwrap();
         assert_eq!(obj_mem.raw_data, v);
     }
+    #[tokio::test]
+    async fn test_recv_data_raw_normal_duration() {
+        let mut share_memory = ShareMemory::new();
+
+        let v = "test";
+        let duration = 10;
+        let message = format!("set key1\r\nduration: {}\r\n\r\n{}\r\n\r\n", duration, v);
+
+        let mut mock_stream = MockTcpStream::new(message.into());
+        let _result = share_memory.recv_data_raw(&mut mock_stream).await;
+
+        match share_memory.data.get("key1") {
+            Some(result) => {
+                assert_eq!(result.raw_data, v.to_string());
+                assert_eq!(result.duration_sec, duration);
+            }
+            None => {}
+        }
+    }
 
     #[tokio::test]
     async fn test_recv_data_raw_chunked() {
@@ -620,6 +639,7 @@ mod tests {
 
         assert_eq!(response, format!("OK\r\n\r\n{}\r\n\r\n", test_data));
     }
+
     #[tokio::test]
     async fn test_recv_n_get_data_chunked() {
         let mut share_memory = ShareMemory::new();
