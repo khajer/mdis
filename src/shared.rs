@@ -2,9 +2,9 @@ use chrono::Utc;
 use std::collections::HashMap;
 use std::env;
 use std::io::Error;
-
 use std::pin::Pin;
 use std::task::{Context, Poll};
+use tokio::io::AsyncWriteExt;
 use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio::net::TcpStream;
 
@@ -36,6 +36,20 @@ impl ShareMemory {
             data: HashMap::new(),
         }
     }
+
+    pub async fn socket_process(&mut self, socket: &mut TcpStream) {
+        match self.recv_data(socket).await {
+            Ok(response) => {
+                if let Err(e) = socket.write_all(response.as_bytes()).await {
+                    eprintln!("Failed to write to socket; err = {:?}", e);
+                }
+            }
+            Err(e) => {
+                eprintln!("Failed to receive data from socket; err = {:?}", e);
+            }
+        }
+    }
+
     pub async fn recv_data(&mut self, socket: &mut TcpStream) -> Result<String, Error> {
         let mut buf = [0; MAX_BUFFER_SIZE];
 
