@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use tokio::io::AsyncWriteExt;
+
 use tokio::net::TcpListener;
 use tokio::sync::Mutex;
 
@@ -21,19 +21,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         tokio::spawn(async move {
             let mut sm = shared_memory_clone.lock().await;
-            match sm.recv_data(&mut socket).await {
-                Ok(response) => {
-                    if let Err(e) = socket.write_all(response.as_bytes()).await {
-                        eprintln!("Failed to write to socket; err = {:?}", e);
-                        return;
-                    }
-                    println!("Response sent: {}", response);
-                }
-                Err(e) => {
-                    eprintln!("Failed to receive data: {:?}", e);
-                    return;
-                }
-            }
+            sm.socket_process(&mut socket).await;
         });
     }
 }
