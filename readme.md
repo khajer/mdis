@@ -24,7 +24,7 @@ docker run -p 6411:6411 mdis env EXPIRE_TIMEOUT=10000
 
 javascript 
 ```sh
-npm install mdis-client;
+npm install mdis-client
 ```
 
 ```javascript 
