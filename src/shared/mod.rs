@@ -16,10 +16,10 @@ pub struct ObjectMemory {
 const MAX_BUFFER_SIZE: usize = 4096;
 const EXPIRE_TIMEOUT: i64 = 300;
 
-const NEW_2LINE_STR: &str = "\r\n\r\n";
+const TWO_DELIMITER: &str = "\r\n\r\n";
 const NEW_LINE_STR: &str = "\r\n";
-const SEPARATOR: &[u8; 4] = b"\r\n\r\n";
-const NEWLINE: &[u8; 2] = b"\r\n";
+const TWO_DELIMITER_BYTE: &[u8; 4] = b"\r\n\r\n";
+const NEW_LINE_BYTE: &[u8; 2] = b"\r\n";
 
 impl ObjectMemory {
     pub fn get_key_duration(&self, curr_time: i64) -> Option<String> {
@@ -52,7 +52,7 @@ impl ShareMemory {
                 Ok(n) => {
                     buffer.extend_from_slice(&buf[..n]);
 
-                    if let Some(pos) = buffer.windows(4).position(|w| w == SEPARATOR) {
+                    if let Some(pos) = buffer.windows(4).position(|w| w == TWO_DELIMITER_BYTE) {
                         header_end = Some(pos);
                         break;
                     }
@@ -122,7 +122,7 @@ impl ShareMemory {
             let mut complete_data = Vec::new();
 
             loop {
-                let chunk_size_end = match remaining_data.windows(2).position(|w| w == NEWLINE) {
+                let chunk_size_end = match remaining_data.windows(2).position(|w| w == NEW_LINE_BYTE) {
                     Some(pos) => pos,
                     None => match socket.read(&mut buf).await {
                         Ok(0) => break,
@@ -190,7 +190,7 @@ impl ShareMemory {
         } else {
             let mut raw_data = String::from_utf8_lossy(&buffer[header_end + 4..]).to_string();
 
-            if raw_data.ends_with(NEW_2LINE_STR) {
+            if raw_data.ends_with(TWO_DELIMITER) {
                 raw_data.truncate(raw_data.len() - 4);
             }
             data_obj = ObjectMemory {
@@ -202,7 +202,7 @@ impl ShareMemory {
 
         self.data.insert(key_data, data_obj);
 
-        let message_out = format!("OK{NEW_LINE_STR}insert completed{NEW_2LINE_STR}").to_string();
+        let message_out = format!("OK{NEW_LINE_STR}insert completed{TWO_DELIMITER}").to_string();
 
         let _ = socket.write_all(message_out.as_bytes()).await;
     }
@@ -212,7 +212,7 @@ impl ShareMemory {
 
         let key_data = header.split_whitespace().nth(1).unwrap();
         let string_out = self.get_data(key_data);
-        let split_data = string_out.split(NEW_2LINE_STR).collect::<Vec<&str>>();
+        let split_data = string_out.split(TWO_DELIMITER).collect::<Vec<&str>>();
 
         if !split_data[0].contains("transfer-encoding: chunked") {
             let _ = socket.write_all(string_out.as_bytes()).await;
@@ -220,7 +220,7 @@ impl ShareMemory {
             //header
             let mut message_out = "".to_string();
             message_out.push_str(split_data[0]);
-            message_out.push_str(NEW_2LINE_STR);
+            message_out.push_str(TWO_DELIMITER);
             let _ = socket.write_all(message_out.as_bytes()).await;
 
             // data
@@ -230,7 +230,7 @@ impl ShareMemory {
                 message_out.push_str(NEW_LINE_STR);
                 let _ = socket.write_all(message_out.as_bytes()).await;
             }
-            let end_text = format!("0{NEW_2LINE_STR}");
+            let end_text = format!("0{TWO_DELIMITER}");
             let _ = socket.write_all(end_text.as_bytes()).await;
         }
     }
@@ -263,7 +263,7 @@ impl ShareMemory {
             Some(result) => {
                 if let Some(val) = result.get_key_duration(Utc::now().timestamp()) {
                     if val.len() > MAX_BUFFER_SIZE {
-                        let mut response = format!("OK{NEW_LINE_STR}transfer-encoding: chunked{NEW_2LINE_STR}").to_string();
+                        let mut response = format!("OK{NEW_LINE_STR}transfer-encoding: chunked{TWO_DELIMITER}").to_string();
 
                         let num_chunks = val.len() / MAX_BUFFER_SIZE;
                         let remainder = val.len() % MAX_BUFFER_SIZE;
@@ -289,12 +289,12 @@ impl ShareMemory {
                         }
 
                         // final chunk
-                        let end_text = format!("0{NEW_2LINE_STR}");
+                        let end_text = format!("0{TWO_DELIMITER}");
                         response.push_str(&end_text);
 
                         response
                     } else {
-                        format!("OK{}{}{}",NEW_2LINE_STR, &val, NEW_2LINE_STR).to_string()
+                        format!("OK{}{}{}",TWO_DELIMITER, &val, TWO_DELIMITER).to_string()
                     }
                 } else {
                     self.data.remove(key);
@@ -302,7 +302,7 @@ impl ShareMemory {
                 }
             }
             None => {
-                return format!("OK{NEW_2LINE_STR}").to_string();
+                return format!("OK{TWO_DELIMITER}").to_string();
             }
         }
     }
