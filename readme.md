@@ -51,7 +51,7 @@ async function main() {
 ## test client call by client
 ```sh 
 # set 
-node example/nodejs/simple/example_1.js
+node examples/nodejs/simple/example_1.js
 #/ get
-node example/nodejs/simple/example_2.js
+node examples/nodejs/simple/example_2.js
 ```
