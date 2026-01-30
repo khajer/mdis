@@ -209,7 +209,6 @@ impl ShareMemory {
 
     pub async fn call_get_data_process(&mut self, header: String, socket: &mut TcpStream) {
 
-
         let key_data = header.split_whitespace().nth(1).unwrap();
         let string_out = self.get_data(key_data);
         let split_data = string_out.split(TWO_DELIMITER).collect::<Vec<&str>>();
