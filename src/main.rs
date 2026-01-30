@@ -8,6 +8,8 @@ use shared::ShareMemory;
 use tracing::info;
 use tracing_subscriber::fmt;
 
+const HOST:&str = "127.0.0.1:6411";
+
 fn setup_logging() {
     fmt()
         .with_target(false)
@@ -18,9 +20,8 @@ fn setup_logging() {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     setup_logging();
-    let host = "127.0.0.1:6411";
-    info!("Starting server at {}", host);
-    let listener = TcpListener::bind(host).await?;
+    info!("Starting server at {}", HOST);
+    let listener = TcpListener::bind(HOST).await?;
     let shared_memory = Arc::new(Mutex::new(ShareMemory::new()));
 
     loop {
