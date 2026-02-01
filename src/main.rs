@@ -20,7 +20,7 @@ fn setup_logging() {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     setup_logging();
-    info!("Starting server at {}", HOST);
+    info!("Starting server at {HOST}");
     let listener = TcpListener::bind(HOST).await?;
     let shared_memory = Arc::new(Mutex::new(ShareMemory::new()));
 
@@ -28,7 +28,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let shared_memory_clone = Arc::clone(&shared_memory);
 
         let (mut socket, addr) = listener.accept().await?;
-        info!("Accepted connection from {}", addr);
+        info!("Accepted connection from {addr}");
 
         tokio::spawn(async move {
             let mut sm = shared_memory_clone.lock().await;
