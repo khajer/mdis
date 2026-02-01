@@ -16,10 +16,11 @@ pub struct ObjectMemory {
 const MAX_BUFFER_SIZE: usize = 4096;
 const EXPIRE_TIMEOUT: i64 = 300;
 
-const TWO_DELIMITER: &str = "\r\n\r\n";
 const NEW_LINE_STR: &str = "\r\n";
-const TWO_DELIMITER_BYTE: &[u8; 4] = b"\r\n\r\n";
 const NEW_LINE_BYTE: &[u8; 2] = b"\r\n";
+
+const TWO_DELIMITER: &str = "\r\n\r\n";
+const TWO_DELIMITER_BYTE: &[u8; 4] = b"\r\n\r\n";
 
 impl ObjectMemory {
     pub fn get_key_duration(&self, curr_time: i64) -> Option<String> {
@@ -201,9 +202,7 @@ impl ShareMemory {
         }
 
         self.data.insert(key_data, data_obj);
-
         let message_out = format!("OK{NEW_LINE_STR}insert completed{TWO_DELIMITER}").to_string();
-
         let _ = socket.write_all(message_out.as_bytes()).await;
     }
 
@@ -263,7 +262,6 @@ impl ShareMemory {
                 if let Some(val) = result.get_key_duration(Utc::now().timestamp()) {
                     if val.len() > MAX_BUFFER_SIZE {
                         let mut response = format!("OK{NEW_LINE_STR}transfer-encoding: chunked{TWO_DELIMITER}").to_string();
-
                         let num_chunks = val.len() / MAX_BUFFER_SIZE;
                         let remainder = val.len() % MAX_BUFFER_SIZE;
 
@@ -273,7 +271,7 @@ impl ShareMemory {
                             let end = start + MAX_BUFFER_SIZE;
                             let chunk = &val[start..end];
 
-                            response.push_str(&format!("{}{}", MAX_BUFFER_SIZE, NEW_LINE_STR));
+                            response.push_str(&format!("{MAX_BUFFER_SIZE}{NEW_LINE_STR}"));
                             response.push_str(chunk);
                             response.push_str(NEW_LINE_STR);
                         }
@@ -282,7 +280,7 @@ impl ShareMemory {
                             let start = num_chunks * MAX_BUFFER_SIZE;
                             let chunk = &val[start..];
 
-                            response.push_str(&format!("{}{}", remainder, NEW_LINE_STR));
+                            response.push_str(&format!("{remainder}{NEW_LINE_STR}"));
                             response.push_str(chunk);
                             response.push_str(NEW_LINE_STR);
                         }
