@@ -12,6 +12,7 @@ mdis is a JSON memory cache server written in Rust. It's a TCP socket server tha
 - Build release binary: `cargo build --release`
 - Run in development: `cargo run`
 - Run with custom expiration timeout: `EXPIRE_TIMEOUT=10000 cargo run`
+- Bind address comes from the `HOST` env var or a `.env` file (`HOST=127.0.0.1:6411`); defaults to 127.0.0.1:6411
 
 ### Testing
 - Run all tests: `cargo test`
@@ -32,7 +33,7 @@ mdis is a JSON memory cache server written in Rust. It's a TCP socket server tha
 ### Core Components
 
 **main.rs** (src/main.rs:1)
-- Entry point that sets up TCP listener on 127.0.0.1:6411
+- Entry point that sets up TCP listener; address from `HOST` env var / `.env` file, default 127.0.0.1:6411
 - Uses tokio async runtime for concurrent connection handling
 - Each connection spawns a new task with cloned Arc<Mutex<ShareMemory>>
 - Logging configured via tracing/tracing-subscriber
@@ -115,3 +116,7 @@ Client implementations are in examples/ directory:
 - Python client: examples/python/simple/
 
 Both implement the mdis protocol for SET/GET operations with chunked transfer support.
+
+## See Also
+
+AGENTS.md has the full protocol specification (request/response wire formats), code style conventions, and known gotchas (e.g. the `check_header_set_method` header-parsing quirk at src/shared/mod.rs:236, per-connection lock granularity, GET-only expiration).
