@@ -1,51 +1,48 @@
-use std::sync::{Arc, Mutex};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use std::sync::Arc;
+
 use tokio::net::TcpListener;
+use tokio::sync::Mutex;
 
 mod shared;
 use shared::ShareMemory;
+use tracing::info;
+use tracing_subscriber::fmt;
+
+const DEFAULT_HOST: &str = "127.0.0.1:6411";
+
+// ponytail: tiny .env parse, add dotenvy if more vars show up
+fn host() -> String {
+    std::env::var("HOST").ok().or_else(|| {
+        std::fs::read_to_string(".env").ok()?
+            .lines()
+            .find_map(|l| l.strip_prefix("HOST=").map(|v| v.trim().to_string()))
+    }).unwrap_or_else(|| DEFAULT_HOST.to_string())
+}
+
+fn setup_logging() {
+    fmt()
+        .with_target(false)
+        .with_max_level(tracing::Level::INFO)
+        .init();
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let listener = TcpListener::bind("127.0.0.1:6411").await?;
+    setup_logging();
+    let host = host();
+    info!("Starting server at {host}");
+    let listener = TcpListener::bind(&host).await?;
     let shared_memory = Arc::new(Mutex::new(ShareMemory::new()));
 
     loop {
         let shared_memory_clone = Arc::clone(&shared_memory);
 
         let (mut socket, addr) = listener.accept().await?;
-        println!("Accepted connection from {}", addr);
+        info!("Accepted connection from {addr}");
 
         tokio::spawn(async move {
-            // buffer read
-            let mut buf = [0; 4096];
-
-            loop {
-                // read from socket
-                let n = match socket.read(&mut buf).await {
-                    Ok(0) => return,
-                    Ok(n) => n,
-                    Err(e) => {
-                        eprintln!("failed to read from socket; err = {:?}", e);
-                        return;
-                    }
-                };
-
-                let resp;
-                let incoming_message = String::from_utf8_lossy(&buf[..n]);
-
-                if let Ok(mut sm) = shared_memory_clone.lock() {
-                    resp = sm.receive_message(incoming_message.to_string());
-                } else {
-                    resp = "".to_string();
-                }
-
-                // write to socket
-                if let Err(e) = socket.write_all(resp.as_bytes()).await {
-                    eprintln!("failed to write to socket; err = {:?}", e);
-                    return;
-                }
-            }
+            let mut sm = shared_memory_clone.lock().await;
+            sm.socket_process(&mut socket).await;
         });
     }
 }
