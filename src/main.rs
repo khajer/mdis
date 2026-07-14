@@ -8,7 +8,16 @@ use shared::ShareMemory;
 use tracing::info;
 use tracing_subscriber::fmt;
 
-const HOST:&str = "127.0.0.1:6411";
+const DEFAULT_HOST: &str = "127.0.0.1:6411";
+
+// ponytail: tiny .env parse, add dotenvy if more vars show up
+fn host() -> String {
+    std::env::var("HOST").ok().or_else(|| {
+        std::fs::read_to_string(".env").ok()?
+            .lines()
+            .find_map(|l| l.strip_prefix("HOST=").map(|v| v.trim().to_string()))
+    }).unwrap_or_else(|| DEFAULT_HOST.to_string())
+}
 
 fn setup_logging() {
     fmt()
@@ -20,8 +29,9 @@ fn setup_logging() {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     setup_logging();
-    info!("Starting server at {HOST}");
-    let listener = TcpListener::bind(HOST).await?;
+    let host = host();
+    info!("Starting server at {host}");
+    let listener = TcpListener::bind(&host).await?;
     let shared_memory = Arc::new(Mutex::new(ShareMemory::new()));
 
     loop {
