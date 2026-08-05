@@ -1,0 +1,7 @@
+[package]
+name = "mdis-client-example"
+version = "1.0.0"
+edition = "2021"
+description = "A Rust client for MDIS, using only std"
+
+[dependencies]
