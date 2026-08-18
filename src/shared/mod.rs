@@ -57,6 +57,22 @@ impl ShareMemory {
                         header_end = Some(pos);
                         break;
                     }
+
+                    // GET requests carry no headers or body -- per the
+                    // protocol spec they end after a single "GET {key}\r\n"
+                    // line, so don't block waiting for a second CRLF that
+                    // a well-behaved GET client will never send.
+                    if let Some(pos) = buffer.windows(2).position(|w| w == NEW_LINE_BYTE) {
+                        let first_line = String::from_utf8_lossy(&buffer[..pos]);
+                        let is_get = first_line
+                            .split_whitespace()
+                            .next()
+                            .is_some_and(|m| m.eq_ignore_ascii_case("get"));
+                        if is_get {
+                            header_end = Some(pos);
+                            break;
+                        }
+                    }
                 }
                 Err(e) => {
                     error!("Failed to read from socket; err = {:?}", e);
@@ -240,20 +256,14 @@ impl ShareMemory {
         }
 
         let first_line_parts: Vec<&str> = header_lines[0].split(' ').collect();
-        if first_line_parts.len() < 2 {
-            if first_line_parts[0].to_string().to_lowercase() == "set" {
-                return Ok(true);
-            } else {
-                return Err(Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    "Invalid header format",
-                ));
-            }
+        match first_line_parts.first() {
+            Some(method) if method.to_lowercase() == "set" => Ok(true),
+            Some(method) if method.to_lowercase() == "get" => Ok(false),
+            _ => Err(Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "Invalid header format",
+            )),
         }
-        return Err(Error::new(
-            std::io::ErrorKind::InvalidInput,
-            "Invalid header format",
-        ));
     }
 
     pub fn get_data(&mut self, key: &str) -> String {

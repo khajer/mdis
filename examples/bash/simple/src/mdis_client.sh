@@ -62,7 +62,10 @@ mdis_split() {
 #   GET not found:        OK\r\n\r\n
 #   error/expired key:    Err\r\n
 mdis_parse_response() {
-  local data="$1"
+  # $(...) command substitution (used by mdis_send) strips trailing
+  # \n but leaves a dangling \r behind (e.g. "Err\r\n" -> "Err\r").
+  # Trim it here so it doesn't end up glued onto the last split part.
+  local data="${1%$'\r'}"
   local -a parts=()
   local line status
 
