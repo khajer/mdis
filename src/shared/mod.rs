@@ -223,30 +223,14 @@ impl ShareMemory {
     }
 
     pub async fn call_get_data_process(&mut self, header: String, socket: &mut TcpStream) {
-
         let key_data = header.split_whitespace().nth(1).unwrap();
         let string_out = self.get_data(key_data);
-        let split_data = string_out.split(TWO_DELIMITER).collect::<Vec<&str>>();
-
-        if !split_data[0].contains("transfer-encoding: chunked") {
-            let _ = socket.write_all(string_out.as_bytes()).await;
-        } else {
-            //header
-            let mut message_out = "".to_string();
-            message_out.push_str(split_data[0]);
-            message_out.push_str(TWO_DELIMITER);
-            let _ = socket.write_all(message_out.as_bytes()).await;
-
-            // data
-            message_out = "".to_string();
-            for chunk in split_data[1].split(NEW_LINE_STR) {
-                message_out.push_str(chunk);
-                message_out.push_str(NEW_LINE_STR);
-                let _ = socket.write_all(message_out.as_bytes()).await;
-            }
-            let end_text = format!("0{TWO_DELIMITER}");
-            let _ = socket.write_all(end_text.as_bytes()).await;
-        }
+        // get_data() already returns the complete, correctly-framed
+        // response (chunked or not) -- send it as-is. Splitting it back
+        // apart on the same delimiters used inside the chunk framing and
+        // rewriting it here previously caused already-sent chunks to be
+        // rewritten (and thus resent) on every iteration.
+        let _ = socket.write_all(string_out.as_bytes()).await;
     }
 
     pub fn check_header_set_method(&self, header: String) -> Result<bool, Error> {
@@ -281,7 +265,7 @@ impl ShareMemory {
                             let end = start + MAX_BUFFER_SIZE;
                             let chunk = &val[start..end];
 
-                            response.push_str(&format!("{MAX_BUFFER_SIZE}{NEW_LINE_STR}"));
+                            response.push_str(&format!("{MAX_BUFFER_SIZE:x}{NEW_LINE_STR}"));
                             response.push_str(chunk);
                             response.push_str(NEW_LINE_STR);
                         }
@@ -290,7 +274,7 @@ impl ShareMemory {
                             let start = num_chunks * MAX_BUFFER_SIZE;
                             let chunk = &val[start..];
 
-                            response.push_str(&format!("{remainder}{NEW_LINE_STR}"));
+                            response.push_str(&format!("{remainder:x}{NEW_LINE_STR}"));
                             response.push_str(chunk);
                             response.push_str(NEW_LINE_STR);
                         }
@@ -410,7 +394,7 @@ mod tests {
         assert_eq!(
             response,
             format!(
-                "OK\r\ntransfer-encoding: chunked\r\n\r\n{}\r\n{}\r\n{}\r\n{}\r\n0\r\n\r\n",
+                "OK\r\ntransfer-encoding: chunked\r\n\r\n{:x}\r\n{}\r\n{:x}\r\n{}\r\n0\r\n\r\n",
                 MAX_BUFFER_SIZE,
                 txt_a,
                 txt_b.len(),
@@ -437,12 +421,12 @@ mod tests {
         let mut expected_response = "OK\r\ntransfer-encoding: chunked\r\n\r\n".to_string();
 
         for _ in 0..4 {
-            expected_response.push_str(&format!("{}\r\n", MAX_BUFFER_SIZE));
+            expected_response.push_str(&format!("{:x}\r\n", MAX_BUFFER_SIZE));
             expected_response.push_str(&"a".repeat(MAX_BUFFER_SIZE));
             expected_response.push_str("\r\n");
         }
 
-        expected_response.push_str(&format!("100\r\n"));
+        expected_response.push_str(&format!("{:x}\r\n", 100));
         expected_response.push_str(&"a".repeat(100));
         expected_response.push_str("\r\n");
         expected_response.push_str("0\r\n\r\n");
