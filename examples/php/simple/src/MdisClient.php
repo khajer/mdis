@@ -92,16 +92,55 @@ class MdisClient
         return $out;
     }
 
+    private const CHUNKED_PREFIX = "OK\r\ntransfer-encoding: chunked\r\n\r\n";
+
+    /**
+     * Decodes a chunked response body back into the original value. Mirrors
+     * chunkEncode()'s framing: "{hex_size}\r\n{chunk}\r\n" repeated,
+     * terminated by "0\r\n\r\n". $body is everything after CHUNKED_PREFIX.
+     */
+    public static function chunkDecode(string $body): string
+    {
+        $out = "";
+        $offset = 0;
+        while (true) {
+            $nl = strpos($body, "\r\n", $offset);
+            if ($nl === false) {
+                break;
+            }
+
+            $size = hexdec(substr($body, $offset, $nl - $offset));
+            if ($size === 0) {
+                break;
+            }
+
+            $dataStart = $nl + 2;
+            $out .= substr($body, $dataStart, $size);
+            $offset = $dataStart + $size + 2; // skip the chunk's trailing \r\n
+        }
+
+        return $out;
+    }
+
     /**
      * Mirrors the Node.js/Python/Ruby/Java/Go/Rust/C client parsing of the
      * same wire format:
-     *   SET success:       OK\r\ninsert completed\r\n
-     *   GET found:         OK\r\n\r\n{data}\r\n\r\n
-     *   GET not found:     OK\r\n\r\n
-     *   error/expired key: Err\r\n
+     *   SET success:        OK\r\ninsert completed\r\n
+     *   GET found:           OK\r\n\r\n{data}\r\n\r\n
+     *   GET not found:        OK\r\n\r\n
+     *   GET found (chunked): OK\r\ntransfer-encoding: chunked\r\n\r\n{chunks}
+     *   error/expired key:    Err\r\n
      */
     public static function parseResponse(string $data): string
     {
+        // A large value comes back chunk-framed rather than as a plain
+        // "OK\r\n\r\n{data}\r\n\r\n" body; the chunk data itself may contain
+        // \r\n, so it must be decoded from the raw string, not the
+        // \r\n-split array used below for the other response shapes.
+        if (strncmp($data, self::CHUNKED_PREFIX, strlen(self::CHUNKED_PREFIX)) === 0) {
+            return self::chunkDecode(substr($data, strlen(self::CHUNKED_PREFIX)));
+        }
+
         $parts = explode("\r\n", $data);
         if (count($parts) === 0) {
             return "NO RESPONSE";
