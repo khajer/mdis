@@ -20,6 +20,14 @@ function test_parse_response(): void
     check(MdisClient::parseResponse("garbage"), "NO RESPONSE");
 }
 
+function test_parse_response_chunked(): void
+{
+    $data = str_repeat("a", 4096 + 100);
+    $response = "OK\r\ntransfer-encoding: chunked\r\n\r\n" . MdisClient::chunkEncode($data);
+
+    check(MdisClient::parseResponse($response), $data);
+}
+
 function test_chunk_round_trip(): void
 {
     $data = str_repeat("a", 4096 * 2 + 10);
@@ -43,5 +51,6 @@ function test_chunk_round_trip(): void
 }
 
 test_parse_response();
+test_parse_response_chunked();
 test_chunk_round_trip();
 echo "All tests passed.\n";
