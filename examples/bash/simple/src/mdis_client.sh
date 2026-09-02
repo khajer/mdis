@@ -42,6 +42,27 @@ mdis_chunk_encode() {
   printf '%s' "$out"
 }
 
+# Decodes a chunked response body back into the original value. Mirrors
+# mdis_chunk_encode's framing: "{hex_size}\r\n{chunk}\r\n" repeated,
+# terminated by "0\r\n\r\n". `body` is everything after the
+# "OK\r\ntransfer-encoding: chunked\r\n\r\n" prefix.
+mdis_chunk_decode() {
+  local body="$1" offset=0 out="" rest size_str size chunk
+
+  while :; do
+    rest="${body:offset}"
+    [[ "$rest" == *$'\r\n'* ]] || break
+    size_str="${rest%%$'\r\n'*}"
+    size=$((16#$size_str))
+    (( size == 0 )) && break
+    offset=$(( offset + ${#size_str} + 2 ))
+    chunk="${body:offset:size}"
+    out+="$chunk"
+    offset=$(( offset + size + 2 ))
+  done
+  printf '%s' "$out"
+}
+
 # Splits a response on literal \r\n delimiters (mirrors Ruby's
 # `data.split("\r\n", -1)`); bash's IFS splitting can't take a
 # multi-char separator, so walk the string instead.
@@ -60,12 +81,24 @@ mdis_split() {
 #   SET success:        OK\r\ninsert completed\r\n
 #   GET found:           OK\r\n\r\n{data}\r\n\r\n
 #   GET not found:        OK\r\n\r\n
+#   GET found (chunked): OK\r\ntransfer-encoding: chunked\r\n\r\n{chunks}
 #   error/expired key:    Err\r\n
 mdis_parse_response() {
   # $(...) command substitution (used by mdis_send) strips trailing
   # \n but leaves a dangling \r behind (e.g. "Err\r\n" -> "Err\r").
   # Trim it here so it doesn't end up glued onto the last split part.
   local data="${1%$'\r'}"
+  local chunked_prefix=$'OK\r\ntransfer-encoding: chunked\r\n\r\n'
+
+  # A large value comes back chunk-framed rather than as a plain
+  # "OK\r\n\r\n{data}\r\n\r\n" body; the chunk data itself may contain
+  # \r\n, so it must be decoded from the raw string, not the
+  # line-split array used below for the other response shapes.
+  if [[ "$data" == "$chunked_prefix"* ]]; then
+    mdis_chunk_decode "${data#"$chunked_prefix"}"
+    return
+  fi
+
   local -a parts=()
   local line status
 
