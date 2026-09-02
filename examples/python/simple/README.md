@@ -5,9 +5,9 @@ A Python client library for connecting to the MDIS (Multi-Device Integration Ser
 ## Features
 
 - TCP-based communication with the MDIS server
-- Thread-safe operations
 - Raw text-based protocol with delimiters
 - Simple API with set/get operations
+- Chunked transfer encoding for payloads over 4096 bytes
 - Response parsing for server acknowledgments and errors
 
 ## Project Structure
@@ -120,35 +120,38 @@ The example connects to the server and retrieves a token value. It demonstrates:
 
 ## Protocol
 
-The client communicates with the server using a simple text-based protocol:
+The client communicates with the server using a simple text-based protocol.
+Each `set()`/`get()` call opens its own short-lived connection -- the server
+handles one request per connection and closes it after replying.
 
 ### Command Format
 
-1. SET commands use the format: `SET ${key}\n${value}\r\n`
-2. GET commands use the format: `GET ${key}\r\n`
-3. Responses are terminated with `\r\n`
-4. No length prefix or JSON encoding is used
+- SET: `set {key}\r\n[Duration: {seconds}\r\n][transfer-encoding: chunked\r\n]\r\n{value}\r\n\r\n`
+- GET: `get {key}\r\n`
+- Payloads over 4096 bytes must use chunked transfer encoding:
+  `{hex_size}\r\n{chunk}\r\n` repeated, terminated by `0\r\n\r\n`
 
 ### Response Format
 
-The server responds with one of the following formats:
+- SET success: `OK\r\ninsert completed\r\n`
+- GET found: `OK\r\n\r\n{value}\r\n\r\n` (or chunk-framed for large values)
+- GET not found: `OK\r\n\r\n`
+- Error / expired key: `Err\r\n`
 
-1. Success response: `ok\nvalue\r\n`
-2. Error response: `err\nerror message\r\n`
-
-The client parses these responses and returns either the value (for successful operations) or an error message (for failed operations).
+The client parses these responses and returns either the value (for
+successful operations) or an error message (for failed operations).
 
 ### Example Protocol Exchange
 
 ```
-Client: SET $token\n123456\r\n
-Server: ok\n123456\r\n
+Client: set token\r\n\r\n123456\r\n\r\n
+Server: OK\r\ninsert completed\r\n
 
-Client: GET $token\r\n
-Server: ok\n123456\r\n
+Client: get token\r\n
+Server: OK\r\n\r\n123456\r\n\r\n
 
-Client: GET $nonexistent\r\n
-Server: err\nKey not found\r\n
+Client: get nonexistent\r\n
+Server: OK\r\n\r\n
 ```
 
 ## Error Handling
@@ -157,20 +160,20 @@ The client handles errors in two ways:
 
 1. **Connection/Protocol Errors**: The client raises exceptions for:
    - Connection errors
-   - Protocol errors
    - Timeout errors (10 seconds)
 
-2. **Server Errors**: The server may return error messages that are parsed by client:
-   - Server returns: `err\nerror message\r\n`
-   - Client returns: `"Error:error message"`
+2. **Server Errors**: The server may return an error response:
+   - Server returns: `Err\r\n` (e.g. for an expired key)
+   - Client returns: `"Error"`
    - If the response format is unrecognizable, returns `"NO RESPONSE"`
 
-## Thread Safety
+## Connections
 
-The client is thread-safe for basic operations:
-- All socket operations are protected by a lock
-- Responses are matched to requests using unique IDs
-- Connection state is properly synchronized
+`set()`/`get()` are independent, self-contained calls -- each opens its own
+socket, sends one request, reads the full response, and closes. There is no
+persistent connection or background thread to manage; `connect()`/`close()`
+are kept only so the existing call-site pattern (`connect()` ...
+`finally: close()`) still works.
 
 ## Development
 
@@ -219,8 +222,8 @@ This Python implementation provides the same functionality as the Node.js versio
 
 1. **Protocol**: Both versions use the same raw TCP protocol
 2. **API**: Similar API patterns with Pythonic naming conventions
-3. **Threading**: Python version uses threading for async operations
-4. **Error Handling**: Python version uses exceptions for errors
+3. **Connections**: Both open one connection per request, same as the Ruby/Go/Java clients
+4. **Error Handling**: Python version uses exceptions for connection/timeout errors
 5. **Dependencies**: Python version has no external dependencies
 
 ## License

@@ -89,17 +89,55 @@ public class MdisClient {
         return out.toString();
     }
 
+    private static final String CHUNKED_PREFIX = "OK\r\ntransfer-encoding: chunked\r\n\r\n";
+
+    /**
+     * Decodes a chunked response body back into the original value. Mirrors
+     * {@link #chunkEncode}'s framing: "{hex_size}\r\n{chunk}\r\n" repeated,
+     * terminated by "0\r\n\r\n". {@code body} is everything after
+     * {@link #CHUNKED_PREFIX}.
+     */
+    static String chunkDecode(String body) {
+        StringBuilder out = new StringBuilder();
+        int offset = 0;
+        while (true) {
+            int nl = body.indexOf("\r\n", offset);
+            if (nl == -1) {
+                break;
+            }
+
+            int size = Integer.parseInt(body.substring(offset, nl), 16);
+            if (size == 0) {
+                break;
+            }
+
+            int dataStart = nl + 2;
+            out.append(body, dataStart, dataStart + size);
+            offset = dataStart + size + 2; // skip the chunk's trailing \r\n
+        }
+        return out.toString();
+    }
+
     /**
      * Mirrors the Node.js/Python/Ruby/Go/Rust/C client parsing of the same
      * wire format:
      * <pre>
-     *   SET success:       OK\r\ninsert completed\r\n
-     *   GET found:          OK\r\n\r\n{data}\r\n\r\n
-     *   GET not found:       OK\r\n\r\n
-     *   error/expired key:   Err\r\n
+     *   SET success:        OK\r\ninsert completed\r\n
+     *   GET found:           OK\r\n\r\n{data}\r\n\r\n
+     *   GET not found:        OK\r\n\r\n
+     *   GET found (chunked): OK\r\ntransfer-encoding: chunked\r\n\r\n{chunks}
+     *   error/expired key:    Err\r\n
      * </pre>
      */
     static String parseResponse(String data) {
+        // A large value comes back chunk-framed rather than as a plain
+        // "OK\r\n\r\n{data}\r\n\r\n" body; the chunk data itself may contain
+        // \r\n, so it must be decoded from the raw string, not the
+        // \r\n-split array used below for the other response shapes.
+        if (data.startsWith(CHUNKED_PREFIX)) {
+            return chunkDecode(data.substring(CHUNKED_PREFIX.length()));
+        }
+
         String[] parts = data.split("\r\n", -1);
         if (parts.length == 0) {
             return "NO RESPONSE";

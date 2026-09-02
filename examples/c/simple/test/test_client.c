@@ -34,6 +34,32 @@ static void test_parse_response(void) {
     free(r);
 }
 
+static void test_parse_response_chunked(void) {
+    size_t len = MAX_BUFFER_SIZE + 100;
+    char *data = malloc(len + 1);
+    memset(data, 'a', len);
+    data[len] = '\0';
+
+    size_t encoded_len;
+    char *encoded = chunk_encode(data, len, &encoded_len);
+    assert(encoded != NULL);
+
+    const char *prefix = "OK\r\ntransfer-encoding: chunked\r\n\r\n";
+    char *response = malloc(strlen(prefix) + encoded_len + 1);
+    memcpy(response, prefix, strlen(prefix));
+    memcpy(response + strlen(prefix), encoded, encoded_len);
+    response[strlen(prefix) + encoded_len] = '\0';
+
+    char *r = parse_response(response);
+    assert(strlen(r) == len);
+    assert(memcmp(r, data, len) == 0);
+
+    free(data);
+    free(encoded);
+    free(response);
+    free(r);
+}
+
 static void test_chunk_round_trip(void) {
     size_t len = MAX_BUFFER_SIZE * 2 + 10;
     char *data = malloc(len + 1);
@@ -73,6 +99,7 @@ static void test_chunk_round_trip(void) {
 
 int main(void) {
     test_parse_response();
+    test_parse_response_chunked();
     test_chunk_round_trip();
     printf("All tests passed.\n");
     return 0;

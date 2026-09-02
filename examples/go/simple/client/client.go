@@ -6,6 +6,7 @@ package client
 import (
 	"fmt"
 	"net"
+	"strconv"
 	"strings"
 )
 
@@ -57,15 +58,19 @@ func (c *MdisClient) send(msg string) (string, error) {
 		return "", err
 	}
 
+	// Read until the server closes the connection after replying. A
+	// single read can legitimately return fewer than maxBufferSize bytes
+	// before the response is complete (e.g. mid-way through a large
+	// chunked payload), so a short read is not itself end-of-stream --
+	// only a read error (io.EOF once the peer closes) is.
 	buf := make([]byte, maxBufferSize)
 	var resp strings.Builder
 	for {
 		n, err := conn.Read(buf)
-		resp.Write(buf[:n])
-		if err != nil {
-			break // EOF or the server closed after replying
+		if n > 0 {
+			resp.Write(buf[:n])
 		}
-		if n < maxBufferSize {
+		if err != nil {
 			break
 		}
 	}
@@ -89,14 +94,51 @@ func chunkEncode(data string) string {
 	return out.String()
 }
 
+const chunkedPrefix = "OK\r\ntransfer-encoding: chunked\r\n\r\n"
+
+// chunkDecode decodes a chunked response body back into the original
+// value. Mirrors chunkEncode's framing: "{hex_size}\r\n{chunk}\r\n"
+// repeated, terminated by "0\r\n\r\n". body is everything after
+// chunkedPrefix.
+func chunkDecode(body string) string {
+	var out strings.Builder
+	offset := 0
+	for {
+		nl := strings.Index(body[offset:], "\r\n")
+		if nl == -1 {
+			break
+		}
+		nl += offset
+
+		size, err := strconv.ParseInt(body[offset:nl], 16, 64)
+		if err != nil || size == 0 {
+			break
+		}
+
+		dataStart := nl + 2
+		out.WriteString(body[dataStart : dataStart+int(size)])
+		offset = dataStart + int(size) + 2 // skip the chunk's trailing \r\n
+	}
+	return out.String()
+}
+
 // parseResponse extracts the value/message from a raw server response.
 // Mirrors the Node.js/Python client parsing of the same wire format:
 //
-//	SET success:      OK\r\ninsert completed\r\n
-//	GET found:         OK\r\n\r\n{data}\r\n\r\n
-//	GET not found:      OK\r\n\r\n
-//	error/expired key:  Err\r\n
+//	SET success:       OK\r\ninsert completed\r\n
+//	GET found:          OK\r\n\r\n{data}\r\n\r\n
+//	GET not found:       OK\r\n\r\n
+//	GET found (chunked): OK\r\ntransfer-encoding: chunked\r\n\r\n{chunks}
+//	error/expired key:   Err\r\n
 func parseResponse(data string) string {
+	// A large value comes back chunk-framed rather than as a plain
+	// "OK\r\n\r\n{data}\r\n\r\n" body; the chunk data itself may contain
+	// \r\n, so it must be decoded from the raw string, not the \r\n-split
+	// slice used below for the other response shapes.
+	if strings.HasPrefix(data, chunkedPrefix) {
+		return chunkDecode(data[len(chunkedPrefix):])
+	}
+
 	parts := strings.Split(data, "\r\n")
 	if len(parts) == 0 {
 		return "NO RESPONSE"

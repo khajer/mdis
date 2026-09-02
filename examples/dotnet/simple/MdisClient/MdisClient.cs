@@ -83,16 +83,59 @@ public class MdisClient
         return sb.ToString();
     }
 
+    private const string ChunkedPrefix = "OK\r\ntransfer-encoding: chunked\r\n\r\n";
+
+    /// <summary>
+    /// Decodes a chunked response body back into the original value. Mirrors
+    /// <see cref="ChunkEncode"/>'s framing: "{hex_size}\r\n{chunk}\r\n"
+    /// repeated, terminated by "0\r\n\r\n". <paramref name="body"/> is
+    /// everything after <see cref="ChunkedPrefix"/>.
+    /// </summary>
+    internal static string ChunkDecode(string body)
+    {
+        var sb = new StringBuilder();
+        var offset = 0;
+        while (true)
+        {
+            var nl = body.IndexOf("\r\n", offset, StringComparison.Ordinal);
+            if (nl == -1)
+            {
+                break;
+            }
+
+            var size = Convert.ToInt32(body[offset..nl], 16);
+            if (size == 0)
+            {
+                break;
+            }
+
+            var dataStart = nl + 2;
+            sb.Append(body, dataStart, size);
+            offset = dataStart + size + 2; // skip the chunk's trailing \r\n
+        }
+        return sb.ToString();
+    }
+
     /// <summary>
     /// Mirrors the Node.js/Python/Ruby/Go/Rust/C/Java client parsing of the
     /// same wire format:
-    ///   SET success:       OK\r\ninsert completed\r\n
-    ///   GET found:          OK\r\n\r\n{data}\r\n\r\n
-    ///   GET not found:       OK\r\n\r\n
-    ///   error/expired key:   Err\r\n
+    ///   SET success:        OK\r\ninsert completed\r\n
+    ///   GET found:           OK\r\n\r\n{data}\r\n\r\n
+    ///   GET not found:        OK\r\n\r\n
+    ///   GET found (chunked): OK\r\ntransfer-encoding: chunked\r\n\r\n{chunks}
+    ///   error/expired key:    Err\r\n
     /// </summary>
     internal static string ParseResponse(string data)
     {
+        // A large value comes back chunk-framed rather than as a plain
+        // "OK\r\n\r\n{data}\r\n\r\n" body; the chunk data itself may contain
+        // \r\n, so it must be decoded from the raw string, not the
+        // \r\n-split array used below for the other response shapes.
+        if (data.StartsWith(ChunkedPrefix, StringComparison.Ordinal))
+        {
+            return ChunkDecode(data[ChunkedPrefix.Length..]);
+        }
+
         var parts = data.Split("\r\n");
         if (parts.Length == 0)
         {
