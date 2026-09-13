@@ -6,7 +6,8 @@ use tokio::sync::Mutex;
 mod shared;
 use shared::ShareMemory;
 use tracing::info;
-use tracing_subscriber::fmt;
+use tracing_appender::non_blocking::WorkerGuard;
+use tracing_subscriber::{fmt, prelude::*};
 
 const DEFAULT_HOST: &str = "127.0.0.1:6411";
 
@@ -19,16 +20,32 @@ fn host() -> String {
     }).unwrap_or_else(|| DEFAULT_HOST.to_string())
 }
 
-fn setup_logging() {
-    fmt()
-        .with_target(false)
-        .with_max_level(tracing::Level::INFO)
+// Logs go to both stdout and logs/<date>.log (one file per day; runs on the
+// same day append to it). The returned guard must stay alive for the process
+// lifetime or the file writer gets dropped.
+fn setup_logging() -> WorkerGuard {
+    std::fs::create_dir_all("logs").expect("failed to create logs directory");
+    let filename = format!("{}.log", chrono::Local::now().format("%Y-%m-%d"));
+    let file_appender = tracing_appender::rolling::never("logs", filename);
+    let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::filter::LevelFilter::INFO)
+        .with(fmt::layer().with_target(false))
+        .with(
+            fmt::layer()
+                .with_target(false)
+                .with_ansi(false)
+                .with_writer(non_blocking),
+        )
         .init();
+
+    guard
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    setup_logging();
+    let _log_guard = setup_logging();
     let host = host();
     info!("Starting server at {host}");
     let listener = TcpListener::bind(&host).await?;
