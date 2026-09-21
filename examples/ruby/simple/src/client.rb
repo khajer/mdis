@@ -60,12 +60,41 @@ class MdisClient
     out << "0\r\n\r\n"
   end
 
+  CHUNKED_PREFIX = "OK\r\ntransfer-encoding: chunked\r\n\r\n"
+
+  # Decodes a chunked response body back into the original value. Mirrors
+  # chunk_encode's framing: "{hex_size}\r\n{chunk}\r\n" repeated, terminated
+  # by "0\r\n\r\n". `body` is everything after CHUNKED_PREFIX.
+  def chunk_decode(body)
+    out = +""
+    offset = 0
+    loop do
+      nl = body.index("\r\n", offset)
+      break unless nl
+
+      size = body[offset...nl].to_i(16)
+      break if size.zero?
+
+      data_start = nl + 2
+      out << body.byteslice(data_start, size)
+      offset = data_start + size + 2 # skip the chunk's trailing \r\n
+    end
+    out
+  end
+
   # Mirrors the Node.js/Python client parsing of the same wire format:
-  #   SET success:       OK\r\ninsert completed\r\n
-  #   GET found:          OK\r\n\r\n{data}\r\n\r\n
-  #   GET not found:       OK\r\n\r\n
-  #   error/expired key:   Err\r\n
+  #   SET success:        OK\r\ninsert completed\r\n
+  #   GET found:           OK\r\n\r\n{data}\r\n\r\n
+  #   GET not found:        OK\r\n\r\n
+  #   GET found (chunked): OK\r\ntransfer-encoding: chunked\r\n\r\n{chunks}
+  #   error/expired key:    Err\r\n
   def parse_response(data)
+    # A large value comes back chunk-framed rather than as a plain
+    # "OK\r\n\r\n{data}\r\n\r\n" body; the chunk data itself may contain
+    # \r\n, so it must be decoded from the raw string, not the \r\n-split
+    # array used below for the other response shapes.
+    return chunk_decode(data[CHUNKED_PREFIX.bytesize..]) if data.start_with?(CHUNKED_PREFIX)
+
     parts = data.split("\r\n", -1)
     return "NO RESPONSE" if parts.empty?
 

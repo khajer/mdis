@@ -1,0 +1,12 @@
+{
+    "name": "mdis/php-client-example",
+    "description": "A PHP client example for MDIS (Multi-Device Integration Service)",
+    "type": "library",
+    "license": "MIT",
+    "require": {
+        "php": ">=7.4"
+    },
+    "autoload": {
+        "classmap": ["src/"]
+    }
+}

@@ -8,6 +8,7 @@ import java.util.Objects;
 public class MdisClientTest {
     public static void main(String[] args) {
         testParseResponse();
+        testParseResponseChunked();
         testChunkRoundTrip();
         System.out.println("All tests passed.");
     }
@@ -18,6 +19,17 @@ public class MdisClientTest {
         check(MdisClient.parseResponse("OK\r\n\r\n"), "");
         check(MdisClient.parseResponse("Err\r\n"), "Error");
         check(MdisClient.parseResponse("garbage"), "NO RESPONSE");
+    }
+
+    private static void testParseResponseChunked() {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < 4096 + 100; i++) {
+            sb.append('a');
+        }
+        String data = sb.toString();
+        String response = "OK\r\ntransfer-encoding: chunked\r\n\r\n" + MdisClient.chunkEncode(data);
+
+        check(MdisClient.parseResponse(response), data);
     }
 
     private static void testChunkRoundTrip() {

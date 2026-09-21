@@ -1,185 +1,172 @@
-# import json
 import socket
-import threading
-from typing import Any, Dict, Optional
+from typing import Any
+
+MAX_BUFFER_SIZE = 4096
+CHUNKED_PREFIX = "OK\r\ntransfer-encoding: chunked\r\n\r\n"
 
 
 class MdisClient:
+    """Minimal TCP client for the mdis protocol. Stdlib only (socket) --
+    no external dependencies, same spirit as the Ruby/Node/Go clients.
+
+    Each set()/get() call opens its own short-lived connection -- the
+    server handles one request per connection and closes it after
+    replying -- so there is no persistent-connection state to manage.
+    """
+
     def __init__(self, host: str = "localhost", port: int = 6411):
         self.host = host
         self.port = port
-        self.socket: Optional[socket.socket] = None
-        self.connected = False
-        self.data: Dict[str, Any] = {}
-        self._lock = threading.Lock()
-        self._response_handlers = {}
-        self._request_id = 0
-        self._receive_thread: Optional[threading.Thread] = None
-        self._response_buffer = ""
 
     @staticmethod
-    def connect(host: str = "localhost", port: int = 6411):
-        """
-        Connect to the MDIS server and return a client instance.
-
-        Args:
-            host: The server host
-            port: The server port
-
-        Returns:
-            An instance of MdisClient connected to the server
-        """
-        client = MdisClient(host, port)
-        client._connect()
-        return client
-
-    def _connect(self) -> None:
-        """Connect to the MDIS server."""
-        if self.connected:
-            return
-
-        try:
-            self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.socket.connect((self.host, self.port))
-            self.connected = True
-
-            self._receive_thread = threading.Thread(target=self._receive_data)
-            self._receive_thread.daemon = True
-            self._receive_thread.start()
-        except Exception as e:
-            print(f"Connection error: {e}")
-            raise
+    def connect(host: str = "localhost", port: int = 6411) -> "MdisClient":
+        """Configure a client for host:port. Does not dial yet -- dialing
+        happens per-request in set()/get()."""
+        return MdisClient(host, port)
 
     def close(self) -> None:
-        """Close the connection to the server."""
-        if self.socket:
-            self.connected = False
-            self.socket.close()
-            if self._receive_thread and self._receive_thread.is_alive():
-                self._receive_thread.join(timeout=1.0)
-            print("Close connection")
+        """No persistent connection is held, so there is nothing to
+        close. Kept so existing call sites' finally-blocks still work."""
+        pass
 
-    def _receive_data(self) -> None:
-        """Receive data from the server in a separate thread."""
-        buffer = ""
-
-        while self.connected:
-            try:
-                data = self.socket.recv(4096).decode("utf-8")
-                if not data:
-                    break
-
-                buffer += data
-
-                # Process complete messages (terminated with \r\n)
-                while "\r\n" in buffer:
-                    line, buffer = buffer.split("\r\n", 1)
-                    self._handle_response(line)
-
-            except Exception as e:
-                if self.connected:
-                    print(f"Receive error: {e}")
-                break
-
-        self.connected = False
-
-    def _handle_response(self, response: str) -> None:
-        """Handle a response from the server."""
-        # Store the last response for get operations
-        self._response_buffer = response
-
-        if self._request_id in self._response_handlers:
-            handler = self._response_handlers[self._request_id]
-            handler(response)
-            del self._response_handlers[self._request_id]
-
-    def parse_response(self, data: str) -> str:
+    def set(self, key: str, value: Any, duration: int = 0) -> str:
         """
-        Parse the response from the server.
+        Store a key-value pair.
 
         Args:
-            data: The raw response data from the server
+            key: The key to store the value under
+            value: The value to store
+            duration: Optional per-key expiration in seconds; 0 (default)
+                uses the server's EXPIRE_TIMEOUT
 
         Returns:
-            The parsed response value or error message
+            The server's response value
         """
-        response = data
-        resp = response.split("\r\n")
+        value_bytes = str(value).encode("utf-8")
 
-        # The first line should be OK or ERR
-        status = resp[0].lower() if resp else ""
+        headers = ""
+        if duration != 0:
+            headers += f"Duration: {duration}\r\n"
 
-        if status == "ok":
-            # For get operations, format is "OK\r\n\r\n[value]\r\n"
-            # For set operations, format is "OK\r\ninsert completed\r\n"
-            if len(resp) >= 3 and resp[1] == "":
-                # Get operation with value
-                return resp[2] or ""
-            elif len(resp) >= 2 and resp[1] != "":
-                # Set operation response
-                return resp[1]
-            elif len(resp) >= 2 and resp[1] == "":
-                # Get operation with empty value
-                return ""
-            return ""
-        elif status == "err":
-            # Error case
-            return "Error"
-
-        return "NO RESPONSE"
-
-    def _send_command(self, command: str) -> Any:
-        """Send a command to the server and wait for the response."""
-        if not self.connected:
-            raise RuntimeError("Not connected to server")
-
-        # Increment request ID for each command
-        self._request_id += 1
-
-        with self._lock:
-            response = None
-            response_received = threading.Event()
-
-            def handle_response(resp):
-                nonlocal response
-                response = resp
-                response_received.set()
-
-            self._response_handlers[self._request_id] = handle_response
-            self.socket.sendall(command.encode("utf-8"))
-
-            # Wait for the response
-            if not response_received.wait(timeout=10):
-                del self._response_handlers[self._request_id]
-                raise TimeoutError("Request timed out")
-
-            return self.parse_response(response)
-
-    def set(self, key: str, value: Any, exp_dur: int = 0) -> Any:
-        """Set a key-value pair."""
-        with self._lock:
-            self.data[key] = value
-
-        if exp_dur != 0:
-            command = f"set {key}\r\nduration: {exp_dur}\r\n\r\n{value}\r\n"
+        if len(value_bytes) > MAX_BUFFER_SIZE:
+            headers += "transfer-encoding: chunked\r\n"
+            payload = _chunk_encode(value_bytes)
         else:
-            command = f"set {key}\r\n\r\n{value}\r\n"
+            payload = value_bytes
 
-        response = self._send_command(command)
+        message = f"set {key}\r\n{headers}\r\n".encode("utf-8") + payload + b"\r\n\r\n"
+        return self._send_command(message)
 
-        # Store the response locally for reference
-        with self._lock:
-            self.data[key] = response
+    def get(self, key: str) -> str:
+        """
+        Retrieve a value by key.
 
-        return response
+        Args:
+            key: The key to look up
 
-    def get(self, key: str) -> Any:
-        """Get a value by key."""
-        command = f"get {key}\r\n"
-        response = self._send_command(command)
+        Returns:
+            The stored value, "" if the key isn't found, or "Error" if
+            the key has expired
+        """
+        return self._send_command(f"get {key}\r\n".encode("utf-8"))
 
-        # Store the response locally for reference
-        with self._lock:
-            self.data[key] = response
+    def _send_command(self, message: bytes) -> str:
+        """Send a raw request and return the parsed response."""
+        with socket.create_connection((self.host, self.port), timeout=10) as sock:
+            sock.sendall(message)
+            sock.shutdown(socket.SHUT_WR)
 
-        return response
+            chunks = []
+            while True:
+                data = sock.recv(MAX_BUFFER_SIZE)
+                if not data:
+                    break  # server closes the connection after replying
+                chunks.append(data)
+
+        response = b"".join(chunks).decode("utf-8", errors="replace")
+        return parse_response(response)
+
+
+def _chunk_encode(data: bytes) -> bytes:
+    """Splits data into MAX_BUFFER_SIZE chunks using the server's hex-size
+    chunked transfer encoding: "{hex_size}\\r\\n{chunk}\\r\\n" repeated,
+    terminated by "0\\r\\n\\r\\n"."""
+    out = bytearray()
+    offset = 0
+    while offset < len(data):
+        size = min(MAX_BUFFER_SIZE, len(data) - offset)
+        out += f"{size:x}\r\n".encode("ascii")
+        out += data[offset:offset + size]
+        out += b"\r\n"
+        offset += size
+    out += b"0\r\n\r\n"
+    return bytes(out)
+
+
+def _chunk_decode(body: str) -> str:
+    """Decodes a chunked response body back into the original value.
+    Mirrors _chunk_encode's framing. `body` is everything after
+    CHUNKED_PREFIX."""
+    out = []
+    offset = 0
+    while True:
+        nl = body.find("\r\n", offset)
+        if nl == -1:
+            break
+
+        size = int(body[offset:nl], 16)
+        if size == 0:
+            break
+
+        data_start = nl + 2
+        out.append(body[data_start:data_start + size])
+        offset = data_start + size + 2  # skip the chunk's trailing \r\n
+
+    return "".join(out)
+
+
+def parse_response(data: str) -> str:
+    """
+    Mirrors the Ruby/Node.js client parsing of the same wire format:
+      SET success:        OK\\r\\ninsert completed\\r\\n
+      GET found:           OK\\r\\n\\r\\n{data}\\r\\n\\r\\n
+      GET not found:        OK\\r\\n\\r\\n
+      GET found (chunked): OK\\r\\ntransfer-encoding: chunked\\r\\n\\r\\n{chunks}
+      error/expired key:    Err\\r\\n
+
+    Args:
+        data: The raw response data from the server
+
+    Returns:
+        The parsed response value or error message
+    """
+    # A large value comes back chunk-framed rather than as a plain
+    # "OK\r\n\r\n{data}\r\n\r\n" body; the chunk data itself may contain
+    # \r\n, so it must be decoded from the raw string, not the \r\n-split
+    # list used below for the other response shapes.
+    if data.startswith(CHUNKED_PREFIX):
+        return _chunk_decode(data[len(CHUNKED_PREFIX):])
+
+    resp = data.split("\r\n")
+
+    # The first line should be OK or ERR
+    status = resp[0].lower() if resp else ""
+
+    if status == "ok":
+        # For get operations, format is "OK\r\n\r\n[value]\r\n"
+        # For set operations, format is "OK\r\ninsert completed\r\n"
+        if len(resp) >= 3 and resp[1] == "":
+            # Get operation with value
+            return resp[2] or ""
+        elif len(resp) >= 2 and resp[1] != "":
+            # Set operation response
+            return resp[1]
+        elif len(resp) >= 2 and resp[1] == "":
+            # Get operation with empty value
+            return ""
+        return ""
+    elif status == "err":
+        # Error case
+        return "Error"
+
+    return "NO RESPONSE"

@@ -17,6 +17,19 @@ func TestParseResponse(t *testing.T) {
 	}
 }
 
+func TestParseResponseChunked(t *testing.T) {
+	data := make([]byte, maxBufferSize+100)
+	for i := range data {
+		data[i] = 'a'
+	}
+	want := string(data)
+	response := "OK\r\ntransfer-encoding: chunked\r\n\r\n" + chunkEncode(want)
+
+	if got := parseResponse(response); got != want {
+		t.Fatalf("parseResponse(chunked) length = %d, want %d", len(got), len(want))
+	}
+}
+
 func TestChunkEncodeRoundTrip(t *testing.T) {
 	data := make([]byte, maxBufferSize*2+10)
 	for i := range data {

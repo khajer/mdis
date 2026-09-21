@@ -3,6 +3,7 @@
 using Mdis;
 
 TestParseResponse();
+TestParseResponseChunked();
 TestChunkRoundTrip();
 Console.WriteLine("All tests passed.");
 
@@ -13,6 +14,14 @@ static void TestParseResponse()
     Check(MdisClient.ParseResponse("OK\r\n\r\n"), "");
     Check(MdisClient.ParseResponse("Err\r\n"), "Error");
     Check(MdisClient.ParseResponse("garbage"), "NO RESPONSE");
+}
+
+static void TestParseResponseChunked()
+{
+    var data = new string('a', 4096 + 100);
+    var response = "OK\r\ntransfer-encoding: chunked\r\n\r\n" + MdisClient.ChunkEncode(data);
+
+    Check(MdisClient.ParseResponse(response), data);
 }
 
 static void TestChunkRoundTrip()

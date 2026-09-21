@@ -67,12 +67,45 @@ fn chunk_encode(data: &str) -> String {
     out
 }
 
+const CHUNKED_PREFIX: &str = "OK\r\ntransfer-encoding: chunked\r\n\r\n";
+
+/// Decodes a chunked response body back into the original value. Mirrors
+/// `chunk_encode`'s framing: `{hex_size}\r\n{chunk}\r\n` repeated,
+/// terminated by `0\r\n\r\n`. `body` is everything after `CHUNKED_PREFIX`.
+fn chunk_decode(body: &str) -> String {
+    let mut out = String::new();
+    let mut offset = 0;
+    while let Some(nl) = body[offset..].find("\r\n") {
+        let nl = offset + nl;
+        let Ok(size) = usize::from_str_radix(&body[offset..nl], 16) else {
+            break;
+        };
+        if size == 0 {
+            break;
+        }
+
+        let data_start = nl + 2;
+        out.push_str(&body[data_start..data_start + size]);
+        offset = data_start + size + 2; // skip the chunk's trailing \r\n
+    }
+    out
+}
+
 /// Mirrors the Node.js/Python/Ruby/Go client parsing of the same wire format:
-///   SET success:       OK\r\ninsert completed\r\n
-///   GET found:          OK\r\n\r\n{data}\r\n\r\n
-///   GET not found:       OK\r\n\r\n
-///   error/expired key:   Err\r\n
+///   SET success:        OK\r\ninsert completed\r\n
+///   GET found:           OK\r\n\r\n{data}\r\n\r\n
+///   GET not found:        OK\r\n\r\n
+///   GET found (chunked): OK\r\ntransfer-encoding: chunked\r\n\r\n{chunks}
+///   error/expired key:    Err\r\n
 fn parse_response(data: &str) -> String {
+    // A large value comes back chunk-framed rather than as a plain
+    // "OK\r\n\r\n{data}\r\n\r\n" body; the chunk data itself may contain
+    // \r\n, so it must be decoded from the raw string, not the \r\n-split
+    // vec used below for the other response shapes.
+    if let Some(body) = data.strip_prefix(CHUNKED_PREFIX) {
+        return chunk_decode(body);
+    }
+
     let parts: Vec<&str> = data.split("\r\n").collect();
     let Some(status) = parts.first() else {
         return "NO RESPONSE".to_string();
@@ -123,6 +156,13 @@ mod tests {
     #[test]
     fn parses_garbage() {
         assert_eq!(parse_response("garbage"), "NO RESPONSE");
+    }
+
+    #[test]
+    fn parses_get_found_chunked() {
+        let data = "a".repeat(MAX_BUFFER_SIZE + 100);
+        let response = format!("{CHUNKED_PREFIX}{}", chunk_encode(&data));
+        assert_eq!(parse_response(&response), data);
     }
 
     #[test]
