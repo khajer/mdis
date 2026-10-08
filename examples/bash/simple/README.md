@@ -14,7 +14,8 @@ same spirit as the Python and Ruby clients.
 ```
 examples/bash/simple/
 ├── src/
-│   └── mdis_client.sh   # mdis_set / mdis_get functions
+│   ├── mdis_client.sh   # mdis_set / mdis_get functions
+│   └── mdis_protocol.sh # chunk encode/decode, request/response helpers
 ├── example_1.sh          # SET operation
 ├── example_2.sh          # GET operation
 ├── example_3.sh           # SET with per-key expiration
