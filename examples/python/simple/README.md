@@ -16,7 +16,8 @@ A Python client library for connecting to the MDIS (Multi-Device Integration Ser
 example/python/simple/
 ├── src/
 │   ├── __init__.py          # Module initialization
-│   └── client.py            # MdisClient implementation
+│   ├── client.py            # MdisClient (connect/set/get)
+│   └── protocol.py          # chunk encode/decode, response parsing
 ├── example_1.py             # Example showing SET operation
 ├── example_2.py             # Example showing GET operation
 ├── requirements.txt          # Python dependencies
