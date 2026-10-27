@@ -10,9 +10,11 @@ clients.
 examples/c/simple/
 ├── src/
 │   ├── mdis_client.h   # public API
-│   └── mdis_client.c   # implementation
+│   ├── mdis_client.c   # client (sockets, set/get)
+│   ├── protocol.h      # chunk encode/decode, response parsing
+│   └── protocol.c
 ├── test/
-│   └── test_client.c   # whitebox test (asserts, no framework)
+│   └── test_client.c   # protocol test (asserts, no framework)
 ├── example_1.c          # SET operation
 ├── example_2.c          # GET operation
 ├── example_3.c          # SET with per-key expiration
