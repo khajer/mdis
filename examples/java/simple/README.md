@@ -8,7 +8,9 @@ no external libraries, same spirit as the other language clients.
 ```
 examples/java/simple/
 ├── src/
-│   └── MdisClient.java   # client implementation
+│   ├── MdisClient.java     # client (connect/set/get)
+│   ├── Chunked.java        # chunked transfer encode/decode
+│   └── ResponseParser.java # server response parsing
 ├── test/
 │   └── MdisClientTest.java  # plain check, no test framework
 ├── Example1.java          # SET operation
