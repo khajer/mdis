@@ -1,9 +1,9 @@
 import java.util.Objects;
 
 /**
- * Plain check for the package-private parseResponse/chunkEncode helpers —
+ * Plain check for the package-private ResponseParser/Chunked helpers —
  * no test framework, matches the other language examples. Same (default)
- * package as MdisClient, so package-private access works.
+ * package as the client, so package-private access works.
  */
 public class MdisClientTest {
     public static void main(String[] args) {
@@ -14,11 +14,11 @@ public class MdisClientTest {
     }
 
     private static void testParseResponse() {
-        check(MdisClient.parseResponse("OK\r\ninsert completed\r\n"), "insert completed");
-        check(MdisClient.parseResponse("OK\r\n\r\nvalue1\r\n\r\n"), "value1");
-        check(MdisClient.parseResponse("OK\r\n\r\n"), "");
-        check(MdisClient.parseResponse("Err\r\n"), "Error");
-        check(MdisClient.parseResponse("garbage"), "NO RESPONSE");
+        check(ResponseParser.parse("OK\r\ninsert completed\r\n"), "insert completed");
+        check(ResponseParser.parse("OK\r\n\r\nvalue1\r\n\r\n"), "value1");
+        check(ResponseParser.parse("OK\r\n\r\n"), "");
+        check(ResponseParser.parse("Err\r\n"), "Error");
+        check(ResponseParser.parse("garbage"), "NO RESPONSE");
     }
 
     private static void testParseResponseChunked() {
@@ -27,9 +27,9 @@ public class MdisClientTest {
             sb.append('a');
         }
         String data = sb.toString();
-        String response = "OK\r\ntransfer-encoding: chunked\r\n\r\n" + MdisClient.chunkEncode(data);
+        String response = "OK\r\ntransfer-encoding: chunked\r\n\r\n" + Chunked.encode(data);
 
-        check(MdisClient.parseResponse(response), data);
+        check(ResponseParser.parse(response), data);
     }
 
     private static void testChunkRoundTrip() {
@@ -39,23 +39,10 @@ public class MdisClientTest {
         }
         String data = sb.toString();
 
-        String encoded = MdisClient.chunkEncode(data);
+        String encoded = Chunked.encode(data);
 
-        // Decode using the same rules the server uses and check we get the
-        // original bytes back.
-        StringBuilder decoded = new StringBuilder();
-        String rest = encoded;
-        while (true) {
-            int nl = rest.indexOf("\r\n");
-            int size = Integer.parseInt(rest.substring(0, nl), 16);
-            rest = rest.substring(nl + 2);
-            if (size == 0) {
-                break;
-            }
-            decoded.append(rest, 0, size);
-            rest = rest.substring(size + 2); // skip chunk + trailing CRLF
-        }
-        check(decoded.toString(), data);
+        String decoded = Chunked.decode(encoded);
+        check(decoded, data);
     }
 
     private static void check(String actual, String expected) {
