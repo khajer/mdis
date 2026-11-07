@@ -6,11 +6,11 @@ OUT = out
 
 all:
 	mkdir -p $(OUT)
-	$(JAVAC) -d $(OUT) src/MdisClient.java Example1.java Example2.java Example3.java Example4.java
+	$(JAVAC) -d $(OUT) src/*.java Example1.java Example2.java Example3.java Example4.java
 
 test:
 	mkdir -p $(OUT)
-	$(JAVAC) -d $(OUT) src/MdisClient.java test/MdisClientTest.java
+	$(JAVAC) -d $(OUT) src/*.java test/MdisClientTest.java
 	$(JAVA) -cp $(OUT) MdisClientTest
 
 clean:
