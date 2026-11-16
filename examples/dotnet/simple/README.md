@@ -8,7 +8,9 @@ no external NuGet packages, same spirit as the other language clients.
 ```
 examples/dotnet/simple/
 ├── MdisClient/                # class library
-│   ├── MdisClient.cs
+│   ├── MdisClient.cs          # client (Connect/Set/Get)
+│   ├── Chunked.cs             # chunked transfer encode/decode
+│   ├── ResponseParser.cs      # server response parsing
 │   └── MdisClient.csproj
 ├── Example1/                  # SET operation
 ├── Example2/                  # GET operation
