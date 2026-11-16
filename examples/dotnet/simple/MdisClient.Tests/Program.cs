@@ -1,4 +1,4 @@
-// Plain check for the internal ParseResponse/ChunkEncode helpers — no test
+// Plain check for the internal ResponseParser/Chunked helpers — no test
 // framework, matches the other language examples.
 using Mdis;
 
@@ -9,43 +9,28 @@ Console.WriteLine("All tests passed.");
 
 static void TestParseResponse()
 {
-    Check(MdisClient.ParseResponse("OK\r\ninsert completed\r\n"), "insert completed");
-    Check(MdisClient.ParseResponse("OK\r\n\r\nvalue1\r\n\r\n"), "value1");
-    Check(MdisClient.ParseResponse("OK\r\n\r\n"), "");
-    Check(MdisClient.ParseResponse("Err\r\n"), "Error");
-    Check(MdisClient.ParseResponse("garbage"), "NO RESPONSE");
+    Check(ResponseParser.Parse("OK\r\ninsert completed\r\n"), "insert completed");
+    Check(ResponseParser.Parse("OK\r\n\r\nvalue1\r\n\r\n"), "value1");
+    Check(ResponseParser.Parse("OK\r\n\r\n"), "");
+    Check(ResponseParser.Parse("Err\r\n"), "Error");
+    Check(ResponseParser.Parse("garbage"), "NO RESPONSE");
 }
 
 static void TestParseResponseChunked()
 {
     var data = new string('a', 4096 + 100);
-    var response = "OK\r\ntransfer-encoding: chunked\r\n\r\n" + MdisClient.ChunkEncode(data);
+    var response = "OK\r\ntransfer-encoding: chunked\r\n\r\n" + Chunked.Encode(data);
 
-    Check(MdisClient.ParseResponse(response), data);
+    Check(ResponseParser.Parse(response), data);
 }
 
 static void TestChunkRoundTrip()
 {
     var data = new string('a', 4096 * 2 + 10);
-    var encoded = MdisClient.ChunkEncode(data);
+    var encoded = Chunked.Encode(data);
 
-    // Decode using the same rules the server uses and check we get the
-    // original bytes back.
-    var decoded = new System.Text.StringBuilder();
-    var rest = encoded;
-    while (true)
-    {
-        var nl = rest.IndexOf("\r\n", StringComparison.Ordinal);
-        var size = Convert.ToInt32(rest[..nl], 16);
-        rest = rest[(nl + 2)..];
-        if (size == 0)
-        {
-            break;
-        }
-        decoded.Append(rest[..size]);
-        rest = rest[(size + 2)..]; // skip chunk + trailing CRLF
-    }
-    Check(decoded.ToString(), data);
+    var decoded = Chunked.Decode(encoded);
+    Check(decoded, data);
 }
 
 static void Check(string actual, string expected)
