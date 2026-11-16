@@ -11,8 +11,6 @@ namespace Mdis;
 /// </summary>
 public class MdisClient
 {
-    private const int MaxBufferSize = 4096;
-
     private readonly string _host;
     private readonly int _port;
 
@@ -37,10 +35,10 @@ public class MdisClient
         }
 
         var payload = value;
-        if (value.Length > MaxBufferSize)
+        if (value.Length > Chunked.MaxChunkSize)
         {
             headers.Append("transfer-encoding: chunked\r\n");
-            payload = ChunkEncode(value);
+            payload = Chunked.Encode(value);
         }
 
         return Send($"set {key}\r\n{headers}\r\n{payload}\r\n\r\n");
@@ -60,95 +58,6 @@ public class MdisClient
 
         using var buffer = new MemoryStream();
         stream.CopyTo(buffer); // server closes after replying
-        return ParseResponse(Encoding.UTF8.GetString(buffer.ToArray()));
-    }
-
-    /// <summary>
-    /// Splits data into MaxBufferSize chunks using the server's hex-size
-    /// chunked transfer encoding: "{hex_size}\r\n{chunk}\r\n" repeated,
-    /// terminated by "0\r\n\r\n".
-    /// </summary>
-    internal static string ChunkEncode(string data)
-    {
-        var sb = new StringBuilder();
-        var offset = 0;
-        while (offset < data.Length)
-        {
-            var size = Math.Min(MaxBufferSize, data.Length - offset);
-            sb.Append(Convert.ToString(size, 16)).Append("\r\n")
-                .Append(data, offset, size).Append("\r\n");
-            offset += size;
-        }
-        sb.Append("0\r\n\r\n");
-        return sb.ToString();
-    }
-
-    private const string ChunkedPrefix = "OK\r\ntransfer-encoding: chunked\r\n\r\n";
-
-    /// <summary>
-    /// Decodes a chunked response body back into the original value. Mirrors
-    /// <see cref="ChunkEncode"/>'s framing: "{hex_size}\r\n{chunk}\r\n"
-    /// repeated, terminated by "0\r\n\r\n". <paramref name="body"/> is
-    /// everything after <see cref="ChunkedPrefix"/>.
-    /// </summary>
-    internal static string ChunkDecode(string body)
-    {
-        var sb = new StringBuilder();
-        var offset = 0;
-        while (true)
-        {
-            var nl = body.IndexOf("\r\n", offset, StringComparison.Ordinal);
-            if (nl == -1)
-            {
-                break;
-            }
-
-            var size = Convert.ToInt32(body[offset..nl], 16);
-            if (size == 0)
-            {
-                break;
-            }
-
-            var dataStart = nl + 2;
-            sb.Append(body, dataStart, size);
-            offset = dataStart + size + 2; // skip the chunk's trailing \r\n
-        }
-        return sb.ToString();
-    }
-
-    /// <summary>
-    /// Mirrors the Node.js/Python/Ruby/Go/Rust/C/Java client parsing of the
-    /// same wire format:
-    ///   SET success:        OK\r\ninsert completed\r\n
-    ///   GET found:           OK\r\n\r\n{data}\r\n\r\n
-    ///   GET not found:        OK\r\n\r\n
-    ///   GET found (chunked): OK\r\ntransfer-encoding: chunked\r\n\r\n{chunks}
-    ///   error/expired key:    Err\r\n
-    /// </summary>
-    internal static string ParseResponse(string data)
-    {
-        // A large value comes back chunk-framed rather than as a plain
-        // "OK\r\n\r\n{data}\r\n\r\n" body; the chunk data itself may contain
-        // \r\n, so it must be decoded from the raw string, not the
-        // \r\n-split array used below for the other response shapes.
-        if (data.StartsWith(ChunkedPrefix, StringComparison.Ordinal))
-        {
-            return ChunkDecode(data[ChunkedPrefix.Length..]);
-        }
-
-        var parts = data.Split("\r\n");
-        if (parts.Length == 0)
-        {
-            return "NO RESPONSE";
-        }
-
-        return parts[0].ToLowerInvariant() switch
-        {
-            "ok" when parts.Length >= 3 && parts[1].Length == 0 => parts[2], // GET with a value
-            "ok" when parts.Length >= 2 && parts[1].Length != 0 => parts[1], // SET response message
-            "ok" => "", // GET, key not found
-            "err" => "Error",
-            _ => "NO RESPONSE",
-        };
+        return ResponseParser.Parse(Encoding.UTF8.GetString(buffer.ToArray()));
     }
 }
