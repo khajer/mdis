@@ -1,8 +1,8 @@
 <?php
 
-// Plain check for the parseResponse/chunkEncode helpers — no test
+// Plain check for the ResponseParser/Chunked helpers — no test
 // framework, matches the other language examples.
-require_once __DIR__ . "/../src/MdisClient.php";
+require_once __DIR__ . "/../src/ResponseParser.php";
 
 function check(string $actual, string $expected): void
 {
@@ -13,40 +13,27 @@ function check(string $actual, string $expected): void
 
 function test_parse_response(): void
 {
-    check(MdisClient::parseResponse("OK\r\ninsert completed\r\n"), "insert completed");
-    check(MdisClient::parseResponse("OK\r\n\r\nvalue1\r\n\r\n"), "value1");
-    check(MdisClient::parseResponse("OK\r\n\r\n"), "");
-    check(MdisClient::parseResponse("Err\r\n"), "Error");
-    check(MdisClient::parseResponse("garbage"), "NO RESPONSE");
+    check(ResponseParser::parse("OK\r\ninsert completed\r\n"), "insert completed");
+    check(ResponseParser::parse("OK\r\n\r\nvalue1\r\n\r\n"), "value1");
+    check(ResponseParser::parse("OK\r\n\r\n"), "");
+    check(ResponseParser::parse("Err\r\n"), "Error");
+    check(ResponseParser::parse("garbage"), "NO RESPONSE");
 }
 
 function test_parse_response_chunked(): void
 {
     $data = str_repeat("a", 4096 + 100);
-    $response = "OK\r\ntransfer-encoding: chunked\r\n\r\n" . MdisClient::chunkEncode($data);
+    $response = "OK\r\ntransfer-encoding: chunked\r\n\r\n" . Chunked::encode($data);
 
-    check(MdisClient::parseResponse($response), $data);
+    check(ResponseParser::parse($response), $data);
 }
 
 function test_chunk_round_trip(): void
 {
     $data = str_repeat("a", 4096 * 2 + 10);
-    $encoded = MdisClient::chunkEncode($data);
+    $encoded = Chunked::encode($data);
 
-    // Decode using the same rules the server uses and check we get the
-    // original bytes back.
-    $decoded = "";
-    $rest = $encoded;
-    while (true) {
-        $nl = strpos($rest, "\r\n");
-        $size = hexdec(substr($rest, 0, $nl));
-        $rest = substr($rest, $nl + 2);
-        if ($size === 0) {
-            break;
-        }
-        $decoded .= substr($rest, 0, $size);
-        $rest = substr($rest, $size + 2); // skip chunk + trailing CRLF
-    }
+    $decoded = Chunked::decode($encoded);
     check($decoded, $data);
 }
 

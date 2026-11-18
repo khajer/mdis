@@ -9,7 +9,9 @@ clients.
 ```
 examples/php/simple/
 ├── src/
-│   └── MdisClient.php    # client implementation
+│   ├── MdisClient.php    # client (connect/set/get)
+│   ├── Chunked.php       # chunked transfer encode/decode
+│   └── ResponseParser.php # server response parsing
 ├── test/
 │   └── MdisClientTest.php  # plain check, no test framework
 ├── example_1.php          # SET operation

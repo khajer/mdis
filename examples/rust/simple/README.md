@@ -8,7 +8,8 @@ A minimal Rust client for the mdis server. `std` only (`std::net::TcpStream`)
 ```
 examples/rust/simple/
 ├── src/
-│   └── lib.rs          # MdisClient implementation + unit tests
+│   ├── lib.rs          # MdisClient (connect/set/get)
+│   └── protocol.rs     # chunk encode/decode, response parsing + unit tests
 ├── examples/
 │   ├── example_1.rs    # SET operation
 │   ├── example_2.rs    # GET operation

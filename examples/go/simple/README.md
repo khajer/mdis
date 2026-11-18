@@ -8,7 +8,8 @@ external dependencies, same spirit as the Python client.
 ```
 examples/go/simple/
 ├── client/
-│   └── client.go      # MdisClient implementation
+│   ├── client.go      # MdisClient (Connect/Set/Get)
+│   └── protocol.go    # chunk encode/decode, response parsing
 ├── example1/main.go   # SET operation
 ├── example2/main.go   # GET operation
 ├── example3/main.go   # SET with per-key expiration

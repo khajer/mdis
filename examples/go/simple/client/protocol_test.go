@@ -37,45 +37,8 @@ func TestChunkEncodeRoundTrip(t *testing.T) {
 	}
 	encoded := chunkEncode(string(data))
 
-	// Re-decode using the same rules the server uses and check we get the
-	// original bytes back.
-	var decoded []byte
-	rest := encoded
-	for {
-		nl := indexCRLF(rest)
-		sizeHex := rest[:nl]
-		size := 0
-		for _, c := range []byte(sizeHex) {
-			size = size*16 + hexDigit(c)
-		}
-		if size == 0 {
-			break
-		}
-		rest = rest[nl+2:]
-		decoded = append(decoded, rest[:size]...)
-		rest = rest[size+2:] // skip chunk + trailing CRLF
-	}
-	if string(decoded) != string(data) {
+	decoded := chunkDecode(encoded)
+	if decoded != string(data) {
 		t.Fatalf("chunk round-trip mismatch: got %d bytes, want %d", len(decoded), len(data))
-	}
-}
-
-func indexCRLF(s string) int {
-	for i := 0; i+1 < len(s); i++ {
-		if s[i] == '\r' && s[i+1] == '\n' {
-			return i
-		}
-	}
-	return -1
-}
-
-func hexDigit(c byte) int {
-	switch {
-	case c >= '0' && c <= '9':
-		return int(c - '0')
-	case c >= 'a' && c <= 'f':
-		return int(c-'a') + 10
-	default:
-		return 0
 	}
 }
